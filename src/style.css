@@ -70,7 +70,24 @@ h2 { margin: 0; font: 600 17px/1.2 var(--font-display); }
 .work:disabled { background: var(--idle); color: var(--muted); border-bottom-color: var(--rule); cursor: default; }
 
 .vitals { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-.face { font-size: 44px; line-height: 1; padding-top: 2px; font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
+.face { font-size: 88px; line-height: 1; padding-top: 2px; font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif; }
+
+.retire-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mini.tiny { padding: 4px 9px; min-height: 24px; font-size: 12px; }
+.retire-rate { min-width: 44px; text-align: center; font-weight: 700; font-size: 17px; }
+#retire-panel { padding: 3px 0; }
+
+/* Pop-up messages. The clock waits while one is open. */
+.overlay { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 20px; background: color-mix(in srgb, var(--ink) 55%, transparent); }
+.popup { width: 100%; max-width: 380px; background: var(--paper); border: 2px solid var(--ink); border-radius: 16px; padding: 20px 18px 18px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3); animation: pop 0.18s ease-out; }
+.popup p { margin: 0; font: 500 18px/1.35 var(--font-body); text-wrap: pretty; }
+.popup-choices { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
+.popup-choices.stack { grid-auto-flow: row; }
+.popup-choices button { min-height: 50px; padding: 8px; font: 700 17px/1.1 var(--font-body); color: var(--ink); background: var(--panel); border: 1.5px solid var(--ink); border-radius: 12px; cursor: pointer; }
+.popup-choices button:active { background: var(--idle); }
+.popup-choices button.primary { color: var(--go-ink); background: var(--go); border: 0; border-bottom: 4px solid var(--go-deep); }
+@keyframes pop { from { transform: scale(0.94); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .popup { animation: none; } }
 
 .clock { width: 60px; height: 60px; flex: none; align-self: center; margin-left: 6px; }
 .clock circle { fill: var(--panel); stroke: var(--ink); stroke-width: 2.5; }

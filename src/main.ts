@@ -5,14 +5,14 @@ import * as G from "./engine/game";
 import type { State } from "./engine/game";
 import { handleEvents, render, ui } from "./ui/render";
 
-const SAVE_KEY = "bbd.save.v5";
+const SAVE_KEY = "bbd.save.v6";
 
 function load(): State | null {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as State;
-    return s && s.v === 5 ? s : null;
+    return s && s.v === 6 ? s : null;
   } catch { return null; }
 }
 function save() {
@@ -38,6 +38,7 @@ function reset() {
   state = G.newGame();
   ui.selected = -1;
   ui.moveLevel = -1;
+  ui.adjustingRetirement = false;
   document.getElementById("end-body")!.innerHTML = "";
   save();
   window.scrollTo(0, 0);
@@ -57,10 +58,13 @@ on("quit", () => {
 // Everything else is found by its data attribute, because panels are rebuilt as their contents change.
 document.addEventListener("click", (ev) => {
   const el = (ev.target as HTMLElement).closest<HTMLElement>(
-    "[data-food],[data-offer],[data-level],[data-down],[data-loan],[data-buy],[data-cancel],[data-move],[data-movelevel],[data-paydown]");
+    "[data-answer],[data-retire],[data-food],[data-offer],[data-level],[data-down],[data-loan],[data-buy],[data-cancel],[data-move],[data-movelevel],[data-paydown]");
   if (!el) return;
   const d = el.dataset;
-  if (d.food) G.setFood(state, Number(d.food));
+  if (d.answer !== undefined) G.answer(state, d.answer);
+  else if (d.retire === "toggle") ui.adjustingRetirement = !ui.adjustingRetirement;
+  else if (d.retire) G.adjustRetirement(state, Number(d.retire));
+  else if (d.food) G.setFood(state, Number(d.food));
   else if (d.offer) { ui.selected = ui.selected === Number(d.offer) ? -1 : Number(d.offer); ui.moveLevel = -1; }
   else if (d.level) G.setOfferLevel(state, ui.selected, Number(d.level));
   else if (d.down) G.setOfferDown(state, ui.selected, Number(d.down));

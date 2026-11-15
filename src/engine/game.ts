@@ -7,6 +7,7 @@ import { taxOnWages } from "./tax";
 export type GameEvent =
   | { kind: "interest"; amount: number }
   | { kind: "pay"; amount: number }
+  | { kind: "retire"; amount: number }
   | { kind: "tax"; amount: number; rate: number }
   | { kind: "buy"; name: string; amount: number }
   | { kind: "mortgage"; amount: number }
@@ -28,6 +29,9 @@ export interface Estate {
   lifetimeInterest: number;
 }
 
+/** A message that stops the clock until the player answers. One choice is a plain confirmation. */
+export interface Popup { id: string; text: string; choices: { label: string; value: string }[] }
+
 /** `down` and `loan` are used only by the House offer. */
 export interface Offer { id: string; level: number; down: number; loan: LoanKind }
 
@@ -47,7 +51,7 @@ export interface Mortgage {
 }
 
 export interface State {
-  v: 5;
+  v: 6;
   generation: number; // hook for heirs
   t: number; // years since start
   months: number; // whole months processed
@@ -63,6 +67,7 @@ export interface State {
     missed: number; // unfilled months in a row
     missedThisYear: number; fullThisYear: number; extraThisYear: number; // extraThisYear counts in months, fractions allowed
     nextPayCut: number; // applied when the next job starts
+    monthsInJob: number;
   };
   loanRate: number; // APY, drifts month to month
   food: number; // notches above the base food budget
@@ -82,8 +87,18 @@ export interface State {
     graceLeft: number; // months before low well-being can cost the job again
     lastBought: Record<string, number>; // month index of last purchase, by item
   };
+  retire: {
+    enrolled: boolean; // once true, the Retirement line stays
+    rate: number; // share of each paycheck contributed
+    balance: number;
+    growth: number; // annualized, drifts month to month
+    ytd: number; // contributed this year, against the annual limit
+  };
+  popups: Popup[]; // shown one at a time; the clock waits
   ytdPay: number;
+  ytdDeferred: number;
   lastYearPay: number; // taxed at the end of month 4
+  lastYearDeferred: number;
   moving: { left: number; perYear: number }[]; // tax bills and bonuses passing through cash over a few seconds
   totals: { pay: number; tax: number; interest: number; spent: number };
   events: GameEvent[];
@@ -105,7 +120,7 @@ const offerFor = (it: BuyItem): Offer => ({ id: it.id, level: it.max ? CFG.buyDe
 
 export function newGame(generation = 1): State {
   return {
-    v: 5,
+    v: 6,
     generation,
     t: 0,
     months: 0,
@@ -113,7 +128,7 @@ export function newGame(generation = 1): State {
     dead: false,
     estate: null,
     cash: CFG.startNetWorth,
-    job: { employed: true, salary: CFG.salary, joblessLeft: 0, taps: 0, extraTaps: 0, missed: 0, missedThisYear: 0, fullThisYear: 0, extraThisYear: 0, nextPayCut: CFG.rehirePayCut },
+    job: { employed: true, salary: CFG.salary, joblessLeft: 0, taps: 0, extraTaps: 0, missed: 0, missedThisYear: 0, fullThisYear: 0, extraThisYear: 0, nextPayCut: CFG.rehirePayCut, monthsInJob: 0 },
     loanRate: CFG.loanRateStart,
     food: 0,
     car: null,
@@ -121,8 +136,12 @@ export function newGame(generation = 1): State {
     mortgage: null,
     shop: { offers: CATALOG.slice(0, 3).map(offerFor), next: 3, bought: [] },
     well: { w: WELL.start, sickLeft: 0, sinceRest: 0, crushLeft: 0, dates: 0, togetherLeft: 0, gymLeft: 0, lowStreak: 0, graceLeft: 0, lastBought: {} },
+    retire: { enrolled: false, rate: 0, balance: 0, growth: CFG.growthStart, ytd: 0 },
+    popups: [],
     ytdPay: 0,
+    ytdDeferred: 0,
     lastYearPay: 0,
+    lastYearDeferred: 0,
     moving: [],
     totals: { pay: 0, tax: 0, interest: 0, spent: 0 },
     events: [],
@@ -138,7 +157,7 @@ export const monthFraction = (s: State) => clamp(s.t * 12 - s.months, 0, 1);
 export const salaryNow = (s: State) => (s.job.employed ? s.job.salary : 0);
 export const canWork = (s: State) => s.job.employed && s.well.sickLeft <= 0;
 export const homeEquity = (s: State) => (s.mortgage ? s.mortgage.homeValue - s.mortgage.balance : 0);
-export const netWorth = (s: State) => s.cash + homeEquity(s);
+export const netWorth = (s: State) => s.cash + homeEquity(s) + s.retire.balance;
 
 export const foodMonthly = (s: State) => CFG.foodBase + CFG.foodPerNotch * s.food;
 export const transportMonthly = (s: State) => (s.car ? s.car.monthly : CFG.busFare);
@@ -303,6 +322,7 @@ function loseJob(s: State, payCut = CFG.rehirePayCut) {
   j.taps = 0;
   j.extraTaps = 0;
   j.nextPayCut = payCut;
+  j.monthsInJob = 0;
   j.joblessLeft = CFG.joblessMonths + (s.well.w < WELL.slowRehireBelow ? WELL.slowRehireExtraMonths : 0);
   s.well.lowStreak = 0;
 }
@@ -325,10 +345,18 @@ function month(s: State) {
   const extraNotches = j.employed ? Math.floor(j.extraTaps / CFG.extraTapsPerNotch) : 0;
   if (j.employed) {
     const pay = j.salary / 12;
-    s.cash += pay;
+    // Retirement contributions come out of the paycheck; the employer matches up to a cap.
+    const r = s.retire;
+    const contrib = Math.max(0, Math.min(pay * r.rate, CFG.retireAnnualLimit - r.ytd));
+    const match = Math.min(contrib, pay * CFG.retireMatchCap);
+    r.balance += contrib + match;
+    r.ytd += contrib;
+    s.ytdDeferred += contrib;
+    s.cash += pay - contrib;
     s.ytdPay += pay;
     s.totals.pay += pay;
-    s.events.push({ kind: "pay", amount: pay });
+    s.events.push({ kind: "pay", amount: pay - contrib });
+    if (contrib > 0) s.events.push({ kind: "retire", amount: contrib + match });
     if (!sick) {
       if (workedFully) { j.missed = 0; j.fullThisYear++; j.extraThisYear += extraNotches / CFG.tapsToFill; }
       else { j.missed++; j.missedThisYear++; }
@@ -336,12 +364,29 @@ function month(s: State) {
     j.taps = 0;
     j.extraTaps = 0;
     if (j.missed >= CFG.missedMonthsToLoseJob) { loseJob(s); s.events.push({ kind: "fired" }); }
+    // A few months into a job, the employer offers the retirement match.
+    else if (++j.monthsInJob === CFG.retireOfferAfterMonths && !r.enrolled) {
+      s.popups.push({
+        id: "retirement-offer",
+        text: "Your employer has offered to match your contribution to a retirement account. How much of your income would you like to contribute?",
+        choices: CFG.retireChoices.map((c) => ({ label: `${Math.round(c * 100)}%`, value: String(c) })),
+      });
+    }
+
   } else if (--j.joblessLeft <= 0) {
     j.employed = true;
     j.salary = Math.max(CFG.salaryFloor, Math.round(j.salary * (1 - j.nextPayCut)));
+    j.monthsInJob = 0;
     s.well.graceLeft = WELL.fireGraceMonths;
     s.events.push({ kind: "hired", salary: j.salary });
   }
+
+  // Retirement savings grow every month at the current annualized rate, which then drifts.
+  s.retire.balance *= (1 + s.retire.growth) ** (1 / 12);
+  s.retire.growth = clamp(
+    s.retire.growth + CFG.growthPull * (CFG.growthMean - s.retire.growth) + CFG.growthShock * gauss(),
+    CFG.growthMin, CFG.growthMax,
+  );
 
   // 3. Mortgage payment: interest first, the rest comes off the principal.
   const m = s.mortgage;
@@ -383,8 +428,9 @@ function month(s: State) {
 
   // 5. Last year's taxes come due at the end of month 4.
   if (s.months % 12 === CFG.taxMonth && s.lastYearPay > 0) {
-    const t = taxOnWages(s.lastYearPay);
+    const t = taxOnWages(s.lastYearPay, s.lastYearDeferred);
     s.lastYearPay = 0;
+    s.lastYearDeferred = 0;
     move(s, -t.total);
     s.totals.tax += t.total;
     s.events.push({ kind: "tax", amount: t.total, rate: t.rate });
@@ -416,7 +462,10 @@ function month(s: State) {
     }
     j.missedThisYear = 0; j.fullThisYear = 0; j.extraThisYear = 0;
     s.lastYearPay += s.ytdPay;
+    s.lastYearDeferred += s.ytdDeferred;
     s.ytdPay = 0;
+    s.ytdDeferred = 0;
+    s.retire.ytd = 0;
   }
 }
 
@@ -444,7 +493,7 @@ function die(s: State) {
 /** Advance the game by `years`, in small fixed steps. */
 export function advance(s: State, years: number) {
   let left = years;
-  while (left > 0 && !s.dead) {
+  while (left > 0 && !s.dead && s.popups.length === 0) {
     const dt = Math.min(CFG.stepYears, left);
     left -= dt;
     s.t += dt;
@@ -481,6 +530,22 @@ export function work(s: State): boolean {
   if (j.taps < CFG.tapsToFill) { j.taps++; return true; }
   if (j.extraTaps < extraTapsToFill()) { j.extraTaps++; return true; }
   return false;
+}
+
+/** Answer the pop-up on screen. */
+export function answer(s: State, value: string) {
+  const p = s.popups.shift();
+  if (!p) return;
+  if (p.id === "retirement-offer") {
+    const rate = Number(value) || 0;
+    s.retire.rate = rate;
+    if (rate > 0) s.retire.enrolled = true;
+  }
+}
+
+export function adjustRetirement(s: State, delta: number) {
+  const next = s.retire.rate + delta * CFG.retireStep;
+  s.retire.rate = Math.round(clamp(next, 0, CFG.retireMaxRate) * 100) / 100;
 }
 
 /** Walk out. Relief now, no pay for a while, a slightly worse job after. */

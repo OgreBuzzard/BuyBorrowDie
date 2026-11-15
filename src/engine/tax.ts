@@ -28,9 +28,10 @@ export function payrollTax(wages: number): number {
     + Math.max(0, wages - TAX.medicareExtraThreshold) * TAX.medicareExtraRate;
 }
 
-export function taxOnWages(wages: number) {
-  const federal = federalIncomeTax(wages);
-  const state = californiaIncomeTax(wages);
+/** `deferred` is pay put into a retirement account: free of income tax for now, but not of payroll tax. */
+export function taxOnWages(wages: number, deferred = 0) {
+  const federal = federalIncomeTax(wages - deferred);
+  const state = californiaIncomeTax(wages - deferred);
   const payroll = payrollTax(wages);
   const total = federal + state + payroll;
   return { federal, state, payroll, total, rate: wages > 0 ? total / wages : 0 };

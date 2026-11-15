@@ -24,6 +24,7 @@ for (const bot of bots) {
   for (let m = 1; m <= 240; m++) {
     for (let i = 0; i < CFG.tapsToFill + (bot.extra ?? 0); i++) G.work(s);
     G.advance(s, 1 / 12);
+    while (s.popups.length) { G.answer(s, "0.05"); G.advance(s, m / 12 - s.t); }
     s.t = m / 12;
     for (const e of s.events.splice(0)) { if (e.kind === "fired") fired++; if (e.kind === "doctor") sick++; if (e.kind === "bonus" && m <= 72) bonuses += Math.round(e.rate * 100) + "% "; }
     if (bot.buyEvery && m % bot.buyEvery === 0) {
@@ -39,7 +40,7 @@ for (const bot of bots) {
     if (m % 12 === 0 && m <= 120) faces += G.face(s);
   }
   const mg = s.mortgage;
-  console.log(`${bot.name}\n  faces by year ${faces} | bonuses ${bonuses}| after 20y: net worth ${usd(G.netWorth(s))}, salary ${usd(s.job.salary)}, fired ${fired}x, sick ${sick}x${mg ? `, house ${usd(mg.homeValue)} owes ${usd(mg.balance)} at ${(mg.rate * 100).toFixed(2)}%, ${G.monthsLeft(mg)} months left` : ""}`);
+  console.log(`${bot.name}\n  faces by year ${faces} | bonuses ${bonuses}| after 20y: net worth ${usd(G.netWorth(s))} (retirement ${usd(s.retire.balance)}, growth now ${(s.retire.growth * 100).toFixed(1)}%), salary ${usd(s.job.salary)}, fired ${fired}x, sick ${sick}x${mg ? `, house ${usd(mg.homeValue)} owes ${usd(mg.balance)} at ${(mg.rate * 100).toFixed(2)}%, ${G.monthsLeft(mg)} months left` : ""}`);
 }
 
 // Mortgage arithmetic against the textbook formula: $400,000 at 7.18% for 30 years is about $2,710 a month.

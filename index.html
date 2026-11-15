@@ -18,6 +18,17 @@
     <div class="ticker" id="ticker" aria-live="polite"></div>
     <div class="vitals">
       <div>
+        <div id="retire-box" hidden>
+          <div class="stat retire-line">Retirement: <span id="retire">$0</span>
+            <button class="mini tiny" id="retire-adjust" type="button" data-retire="toggle">Adjust</button></div>
+          <div class="meter-row" id="retire-panel" hidden>
+            <button class="pm" type="button" data-retire="-1" aria-label="Contribute less">&minus;</button>
+            <span class="retire-rate" id="retire-rate">5%</span>
+            <button class="pm" type="button" data-retire="1" aria-label="Contribute more">+</button>
+            <span class="note">of each paycheck</span>
+          </div>
+          <div class="stat">Growth: <span id="growth">5%</span></div>
+        </div>
         <div class="stat" id="age">Age 22 and 0 months</div>
         <div class="stat">Loan Interest: <span id="apr">6%</span></div>
         <div class="stat flash" id="flash-line"></div>
@@ -102,6 +113,13 @@
     <button class="btn" id="again" type="button">Start a new life</button>
   </section>
 </main>
+
+<div class="overlay" id="popup" hidden>
+  <div class="popup" role="dialog" aria-modal="true" aria-labelledby="popup-text">
+    <p id="popup-text"></p>
+    <div class="popup-choices" id="popup-choices"></div>
+  </div>
+</div>
 
 <script type="module" src="/src/main.ts"></script>
 </body>

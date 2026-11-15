@@ -25,6 +25,7 @@ export const ui = {
   moveLevel: -1, // apartment level being considered in the Move panel; -1 when closed
   quitArmedAt: 0, // time of the first Quit tap
   paused: false,
+  adjustingRetirement: false,
 };
 
 const rate = (x: number) => (Math.round(x * 10000) / 100).toString() + "%";
@@ -80,6 +81,7 @@ export function handleEvents(events: GameEvent[]) {
   for (const e of events) {
     if (e.kind === "interest") neg(`${usd(-e.amount)} interest`);
     else if (e.kind === "pay") pos(`+${usd(e.amount)} pay`);
+    else if (e.kind === "retire") pos(`+${usd(e.amount)} retirement`);
     else if (e.kind === "buy") neg(`${usd(-e.amount)} ${esc(e.name)}`);
     else if (e.kind === "mortgage") neg(`${usd(-e.amount)} mortgage`);
     else if (e.kind === "doctor") neg(`${usd(-e.amount)} doctor`);
@@ -103,13 +105,36 @@ export function render(s: State) {
   text("age", `Age ${G.ageYears(s)} and ${m} ${m === 1 ? "month" : "months"}`);
   text("apr", rate(s.loanRate));
   text("face", G.face(s));
+  renderPopup(s);
   if (s.dead) return renderEnd(s);
+
+  // Retirement: appears once the player has enrolled.
+  show("retire-box", s.retire.enrolled);
+  if (s.retire.enrolled) {
+    text("retire", usd(s.retire.balance));
+    text("growth", (s.retire.growth * 100).toFixed(1) + "%");
+    show("retire-panel", ui.adjustingRetirement);
+    text("retire-adjust", ui.adjustingRetirement ? "Done" : "Adjust");
+    text("retire-rate", Math.round(s.retire.rate * 100) + "%");
+  }
 
   renderWork(s);
   renderExpenses(s);
   renderBuy(s);
   renderMortgage(s);
   text("pause", ui.paused ? "Resume" : "Pause");
+}
+
+/** Pop-up message. One choice is shown as a single confirm button; several are shown side by side. */
+function renderPopup(s: State) {
+  const p = s.popups[0];
+  show("popup", !!p && !s.dead);
+  if (!p) return;
+  text("popup-text", p.text);
+  const long = p.choices.some((c) => c.label.length > 12) || p.choices.length > 3;
+  $("popup-choices").classList.toggle("stack", long);
+  html("popup-choices", p.id + p.choices.map((c) => c.label).join("|"), () =>
+    p.choices.map((c) => `<button type="button"${p.choices.length === 1 ? ' class="primary"' : ""} data-answer="${esc(c.value)}">${esc(c.label)}</button>`).join(""));
 }
 
 function renderWork(s: State) {

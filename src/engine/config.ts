@@ -42,6 +42,20 @@ export const CFG = {
   // Extra work: a second bar that appears once the first is full.
   extraTapsPerNotch: 5,
 
+  // Retirement account, offered by pop-up a few months into a job.
+  retireOfferAfterMonths: 3,
+  retireChoices: [0, 0.05, 0.1],
+  retireMaxRate: 0.1,
+  retireStep: 0.01,
+  retireMatchCap: 0.05, // the employer matches contributions up to this share of pay
+  retireAnnualLimit: 24_500, // 2026 employee limit
+  growthStart: 0.05, // annualized, applied monthly
+  growthMean: 0.05,
+  growthMin: -0.05,
+  growthMax: 0.15,
+  growthPull: 0.15, // monthly pull back toward the mean
+  growthShock: 0.02, // monthly random move
+
   quitRelief: 8, // well-being lift from quitting
   quitPayCut: 0.05, // next job pays this much less after quitting (10% after being let go)
 
