@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buy, Borrow, Die</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap" rel="stylesheet">
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div class="nwline">
+      <span class="nw">Net Worth: <span id="nw">$0</span></span>
+      <span class="flash" id="flash-amount" aria-live="polite"></span>
+    </div>
+    <div class="ticker" id="ticker" aria-live="polite"></div>
+    <div class="vitals">
+      <div>
+        <div class="stat" id="age">Age 22 and 0 months</div>
+        <div class="stat">Loan Interest: <span id="apr">6%</span></div>
+        <div class="stat flash" id="flash-line"></div>
+      </div>
+      <div class="face" id="face" role="img" aria-label="How you feel">🙂</div>
+    </div>
+  </div>
+</header>
+
+<main id="game">
+  <section class="work-sec">
+    <h2>Work</h2>
+    <button class="quit" id="quit" type="button">Quit</button>
+    <div class="stat">Salary: <span id="salary">$100,000</span> per year</div>
+    <div class="workrow">
+      <button class="work" id="work" type="button">Work</button>
+      <div class="thermo" id="thermo" role="img" aria-label="Work done this month">
+        <div class="thermo-fill" id="thermo-fill"></div>
+        <div class="thermo-ticks"></div>
+      </div>
+      <div class="thermo extra" id="thermo-extra" role="img" aria-label="Extra work done this month">
+        <div class="thermo-fill" id="thermo-extra-fill"></div>
+        <div class="thermo-ticks"></div>
+      </div>
+      <svg class="clock" viewBox="0 0 64 64" role="img" aria-label="Time left this month">
+        <circle cx="32" cy="32" r="29"/>
+        <line id="clock-hand" x1="32" y1="32" x2="32" y2="7"/>
+      </svg>
+    </div>
+  </section>
+
+  <section>
+    <h2>Expenses</h2>
+    <div class="meter-row">
+      <span class="meter-label">Food</span>
+      <button class="pm" type="button" data-food="-1" aria-label="Spend less on food">&minus;</button>
+      <div class="hmeter" id="food-meter" role="img" aria-label="Food spending"></div>
+      <button class="pm" type="button" data-food="1" aria-label="Spend more on food">+</button>
+    </div>
+    <div class="cost-row"><span id="transport">Bus fare</span><span id="transport-cost"></span></div>
+    <div class="cost-row" id="housing-row" hidden>
+      <span id="housing">Rent</span><span id="housing-cost"></span>
+      <button class="mini" id="move" type="button" data-move="open">Move</button>
+    </div>
+    <div class="panel" id="move-panel" hidden></div>
+  </section>
+
+  <section>
+    <h2>Buy</h2>
+    <div class="offers" id="offers"></div>
+    <div class="panel" id="buy-panel" hidden></div>
+  </section>
+
+  <section id="sec-mortgage" hidden>
+    <h2>Mortgage</h2>
+    <div class="exp"><span>Still owed</span><span id="m-balance"></span></div>
+    <div class="hbar" id="m-progress" role="img" aria-label="Share of the loan paid off"></div>
+    <div class="exp"><span>Time left</span><span id="m-left"></span></div>
+    <div class="exp"><span>Monthly payment</span><span id="m-payment"></span></div>
+    <div class="hbar split" id="m-split" role="img" aria-label="How each payment divides"></div>
+    <div class="legend" id="m-legend"></div>
+    <div class="exp"><span>Interest paid so far</span><span id="m-paid"></span></div>
+    <div class="exp"><span>Interest still to come</span><span id="m-coming"></span></div>
+    <div class="exp"><span id="m-terms">Rate</span><span id="m-rate"></span></div>
+    <div class="note" id="m-note" hidden></div>
+    <div class="payrow">
+      <button class="pay" type="button" data-paydown="10000">Pay $10,000</button>
+      <button class="pay" type="button" data-paydown="100000">Pay $100,000</button>
+      <button class="pay" type="button" data-paydown="all">Pay it off</button>
+    </div>
+  </section>
+
+  <footer>
+    <button class="mini" id="pause" type="button">Pause</button>
+  </footer>
+</main>
+
+<main id="end" hidden>
+  <section>
+    <h2 id="end-title"></h2>
+    <div id="end-body"></div>
+    <button class="btn" id="again" type="button">Start a new life</button>
+  </section>
+</main>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

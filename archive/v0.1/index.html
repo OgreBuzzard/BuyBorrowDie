@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Buy, Borrow, Die</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div>
+      <div class="label">Net worth</div>
+      <div class="networth" id="nw">$0</div>
+    </div>
+    <div class="top-side">
+      <div><span class="label">Age</span> <span class="fig" id="age">22</span></div>
+      <div><span class="label">Lifetime tax rate</span> <span class="fig" id="eff">0%</span></div>
+      <button class="btn small" id="pause" type="button">Pause</button>
+    </div>
+  </div>
+</header>
+
+<main id="game">
+  <section id="sec-work">
+    <h2>Work</h2>
+    <div class="row"><span id="job-title">Software Engineer</span><span class="fig" id="job-pay"></span></div>
+    <div id="work-on">
+      <button class="btn primary big" id="work" type="button">Work</button>
+      <div class="meter" aria-hidden="true"><div class="meter-fill" id="perf-fill"></div></div>
+      <div class="row muted"><span id="perf-label">Progress to promotion</span><span class="fig" id="bonus"></span></div>
+      <button class="btn" id="resign" type="button" hidden>Resign</button>
+    </div>
+    <div id="work-off" class="muted" hidden>You do not have a job.</div>
+  </section>
+
+  <section id="sec-pay" hidden>
+    <h2>Last paycheck</h2>
+    <div class="bar" id="pay-bar"></div>
+    <div class="legend" id="pay-legend"></div>
+  </section>
+
+  <section id="sec-cash">
+    <h2>Cash</h2>
+    <div class="row strong"><span>Cash on hand</span><span class="fig" id="cash"></span></div>
+    <div class="row"><span>Monthly costs</span><span class="fig" id="costs"></span></div>
+    <div class="lines" id="cost-lines"></div>
+    <div id="card-box" hidden>
+      <div class="row strong warn"><span>Credit card debt at <span id="card-apr"></span></span><span class="fig" id="card"></span></div>
+      <div class="bar" id="card-bar"></div>
+      <div class="legend" id="card-legend"></div>
+      <div class="muted note">Incoming cash pays this first.</div>
+    </div>
+  </section>
+
+  <section id="sec-invest" hidden>
+    <h2>Investments</h2>
+    <div class="row strong"><span>Index fund</span><span class="fig" id="port"></span></div>
+    <div class="row"><span>What you paid</span><span class="fig" id="basis"></span></div>
+    <div class="row"><span>Untaxed gain</span><span class="fig" id="gain"></span></div>
+    <div class="spark" id="mkt-spark"></div>
+    <div class="btnrow"><span class="label">Invest cash</span>
+      <button class="btn" data-invest="0.1" type="button">10%</button>
+      <button class="btn" data-invest="0.5" type="button">50%</button>
+      <button class="btn" data-invest="1" type="button">All</button>
+    </div>
+    <div class="btnrow"><span class="label">Sell</span>
+      <button class="btn" data-sell="0.1" type="button">10%</button>
+      <button class="btn" data-sell="0.5" type="button">50%</button>
+      <button class="btn" data-sell="1" type="button">All</button>
+    </div>
+    <div class="muted note" id="sell-note"></div>
+  </section>
+
+  <section id="sec-loan" hidden>
+    <h2>Credit line</h2>
+    <div class="row strong"><span>You owe</span><span class="fig" id="debt"></span></div>
+    <div class="ltv">
+      <div class="bar" id="loan-bar"></div>
+      <div class="tick" id="tick-limit"><span>limit</span></div>
+      <div class="tick call" id="tick-call"><span>bank sells</span></div>
+    </div>
+    <div class="legend" id="loan-legend"></div>
+    <div class="row"><span>Interest rate</span><span class="fig" id="rate"></span></div>
+    <div class="spark" id="rate-spark"></div>
+    <div class="row"><span>Interest per year at this rate</span><span class="fig" id="int-year"></span></div>
+    <div class="compare" id="compare"></div>
+    <div class="btnrow"><span class="label">Borrow</span>
+      <button class="btn" data-borrow="0.1" type="button">10%</button>
+      <button class="btn" data-borrow="0.5" type="button">50%</button>
+      <button class="btn" data-borrow="1" type="button">Max</button>
+      <span class="fig muted" id="avail"></span>
+    </div>
+    <div class="btnrow"><span class="label">Repay</span>
+      <button class="btn" data-repay="0.1" type="button">10%</button>
+      <button class="btn" data-repay="0.5" type="button">50%</button>
+      <button class="btn" data-repay="1" type="button">All</button>
+    </div>
+    <label class="check"><input type="checkbox" id="opt-living"> Pay living costs from the credit line</label>
+    <label class="check"><input type="checkbox" id="opt-interest"> Pay interest in cash each month. Otherwise it is added to the loan.</label>
+  </section>
+
+  <section id="sec-life">
+    <h2>Things to buy</h2>
+    <div id="life-list"></div>
+  </section>
+
+  <section id="sec-flow" hidden>
+    <h2>Where the money went, last year</h2>
+    <div class="label">In</div>
+    <div class="bar" id="flow-in"></div>
+    <div class="legend" id="flow-in-legend"></div>
+    <div class="label">Out</div>
+    <div class="bar" id="flow-out"></div>
+    <div class="legend" id="flow-out-legend"></div>
+  </section>
+
+  <section id="sec-chart" hidden>
+    <h2>Net worth by age</h2>
+    <div class="chart" id="nw-chart"></div>
+  </section>
+
+  <section id="sec-log">
+    <h2>Record</h2>
+    <ol class="log" id="log"></ol>
+  </section>
+
+  <footer>
+    <button class="btn small" id="restart" type="button">Start over</button>
+    <label class="speed">Test speed
+      <select id="speed">
+        <option value="1">1× (3 min per year)</option>
+        <option value="5">5×</option>
+        <option value="20">20×</option>
+        <option value="100">100×</option>
+      </select>
+    </label>
+    <div class="muted note">Prototype 0.1. Progress saves in this browser. Tax rules are simplified.</div>
+  </footer>
+</main>
+
+<main id="end" hidden>
+  <section>
+    <h2 id="end-title">Estate</h2>
+    <div id="end-body"></div>
+    <div class="chart" id="end-chart"></div>
+    <button class="btn primary" id="again" type="button">Start a new life</button>
+  </section>
+</main>
+
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
