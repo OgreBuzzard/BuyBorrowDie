@@ -1,4 +1,4 @@
-# Buy, Borrow, Die — prototype 0.9
+# Buy, Borrow, Die — prototype 0.10
 
 Incremental game about wealth and tax. Design doc lives in the Claude project ("Buy, Borrow, Die" → `claude/design-doc.md`).
 
@@ -18,7 +18,7 @@ Incremental game about wealth and tax. Design doc lives in the Claude project ("
 - `src/main.ts` — clock loop, save/load (localStorage), event wiring.
 - `scripts/sim.ts` — headless month-by-month checks.
 
-## Current build: 0.9
+## Current build: 0.10
 
 Net worth starts at -$80,000 of student debt. Food, transport and rent drain it continuously. Each month end:
 interest on debt (drifting APY), paycheck, mortgage payment, well-being update. End of month 4: last year's
@@ -41,6 +41,10 @@ salary, doubles both work bars, and adds an Ownership line that is worth nothing
 then either fails (exit package, next company) or gets its first valuation. From then on the work bar loses a
 notch a month, the bank offers a credit line against the stake, and one event card a year (`CARDS` in
 `config.ts`) moves the stake's value. Declining the offer is permanent and shortens the player's life.
+
+Buy scales with wealth (`TIERS` and `CATALOG` in `config.ts`): at $1M and again at $1B the list changes. Small
+things drop out, lasting things get far more expensive, and new things (boat, yacht, island) are bought once and
+then cost money every month until sold. The tier never goes back down.
 
 Saves from earlier builds are brought up to date by `migrate()` rather than discarded.
 

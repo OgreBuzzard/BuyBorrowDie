@@ -157,40 +157,70 @@ export const LOANS: Record<LoanKind, { name: string; years: number; rateAdj: num
   io: { name: "Interest only", years: 30, rateAdj: -0.01, ioYears: 10, resetSpread: 0.03 },
 };
 
+/** Wealth tiers. What Buy offers depends on the highest tier the player has reached. */
+export const TIERS = [
+  { name: "", netWorth: 0 },
+  { name: "Millionaire", netWorth: 1_000_000 },
+  { name: "Billionaire", netWorth: 1_000_000_000 },
+];
+/** A price: fixed, or [cheap, nice] for a meter. */
+export type Price = number | [number, number] | null;
+
 export interface BuyItem {
   id: string;
   name: string;
-  min: number; // price of the cheap version
-  max?: number; // price of the nice version; omit for a fixed price
-  once?: boolean; // never offered again after purchase
-  requires?: string; // only offered after this item has been bought
-  perMonth?: boolean; // price is a monthly rent, not a one-time cost
+  prices: [Price, Price, Price]; // by tier; null means not offered at that tier
+  once?: boolean; // not offered again while owned or after purchase
+  oncePerTier?: boolean; // can be bought again after moving up a tier
+  requires?: string; // at the first tier, only offered after this item has been bought
+  perMonth?: boolean; // price is a monthly charge, not a one-time cost
+  upkeep?: number; // monthly cost of owning it, as a share of the price
+  upkeepBase?: number; // plus this much a month
+  exit?: "Sell" | "Quit"; // owned things with upkeep appear in Expenses with this button
 }
+export const RESALE = 0.4; // share of the price returned on selling
 
 // Offered three at a time, in this order, then around again.
 export const CATALOG: BuyItem[] = [
-  { id: "apartment", name: "Apartment", min: 1400, max: 5500, once: true, perMonth: true },
-  { id: "clothes", name: "Clothes", min: 150, max: 2500 },
-  { id: "family", name: "Visit family", min: 450 },
-  { id: "furniture", name: "Furniture", min: 300, max: 8000 },
-  { id: "vacation", name: "Vacation", min: 900, max: 12000 },
-  { id: "car", name: "Car", min: 8000, max: 65000, once: true },
-  { id: "gym", name: "Gym", min: 30, max: 250, once: true, perMonth: true }, // offered again after quitting
-  { id: "house", name: "House", min: 450_000, max: 3_500_000, once: true, requires: "apartment" },
-  { id: "phone", name: "Phone", min: 500, max: 1600 },
-  { id: "concert", name: "Concert tickets", min: 120, max: 900 },
-  { id: "laptop", name: "Laptop", min: 900, max: 4000 },
-  { id: "bike", name: "Bike", min: 400, max: 6000 },
-  { id: "dinner", name: "Dinner out", min: 60, max: 600 },
-  { id: "gift", name: "Wedding gift", min: 150 },
-  { id: "mattress", name: "Mattress", min: 400, max: 5000 },
-  { id: "tv", name: "TV", min: 350, max: 4000 },
-  { id: "headphones", name: "Headphones", min: 80, max: 550 },
-  { id: "dentist", name: "Dentist", min: 350 },
-  { id: "watch", name: "Watch", min: 150, max: 12000 },
-  { id: "ski", name: "Ski trip", min: 900, max: 7000 },
-  { id: "shoes", name: "Shoes", min: 90, max: 900 },
-  { id: "couch", name: "Couch", min: 600, max: 9000 },
+  { id: "apartment", name: "Apartment", prices: [[1400, 5500], null, null], once: true, perMonth: true },
+  { id: "clothes", name: "Clothes", prices: [[150, 2500], [3000, 60_000], [50_000, 1_500_000]] },
+  { id: "family", name: "Visit family", prices: [450, 6000, 80_000] },
+  { id: "furniture", name: "Furniture", prices: [[300, 8000], [10_000, 250_000], [500_000, 20_000_000]] },
+  { id: "vacation", name: "Vacation", prices: [[900, 12_000], [20_000, 250_000], [500_000, 5_000_000]] },
+  { id: "car", name: "Car", prices: [[8000, 65_000], null, null], once: true },
+  { id: "gym", name: "Gym", prices: [[30, 250], [30, 250], [30, 250]], once: true, perMonth: true }, // offered again after quitting
+  { id: "house", name: "House", prices: [[450_000, 3_500_000], [3_000_000, 40_000_000], [50_000_000, 300_000_000]], oncePerTier: true, requires: "apartment" },
+  { id: "watch", name: "Watch", prices: [[150, 12_000], [20_000, 400_000], [500_000, 10_000_000]] },
+  { id: "ski", name: "Ski trip", prices: [[900, 7000], [15_000, 120_000], [200_000, 2_000_000]] },
+
+  // Incidental once you are a millionaire: no longer listed.
+  { id: "phone", name: "Phone", prices: [[500, 1600], null, null] },
+  { id: "concert", name: "Concert tickets", prices: [[120, 900], null, null] },
+  { id: "laptop", name: "Laptop", prices: [[900, 4000], null, null] },
+  { id: "bike", name: "Bike", prices: [[400, 6000], null, null] },
+  { id: "dinner", name: "Dinner out", prices: [[60, 600], null, null] },
+  { id: "gift", name: "Wedding gift", prices: [150, null, null] },
+  { id: "mattress", name: "Mattress", prices: [[400, 5000], null, null] },
+  { id: "tv", name: "TV", prices: [[350, 4000], null, null] },
+  { id: "headphones", name: "Headphones", prices: [[80, 550], null, null] },
+  { id: "dentist", name: "Dentist", prices: [350, null, null] },
+  { id: "shoes", name: "Shoes", prices: [[90, 900], null, null] },
+  { id: "couch", name: "Couch", prices: [[600, 9000], null, null] },
+
+  // Millionaire. Each is bought once and then costs money every month.
+  { id: "boat", name: "Boat", prices: [null, [80_000, 2_000_000], null], once: true, upkeep: 0.01, exit: "Sell" },
+  { id: "cabin", name: "Cabin", prices: [null, [400_000, 5_000_000], null], once: true, upkeep: 0.004, exit: "Sell" },
+  { id: "club", name: "Club", prices: [null, [50_000, 500_000], null], once: true, upkeep: 0.015, exit: "Quit" },
+  { id: "horse", name: "Horse", prices: [null, [20_000, 250_000], null], once: true, upkeep: 0.012, upkeepBase: 1500, exit: "Sell" },
+  { id: "sportscar", name: "Sports car", prices: [null, [120_000, 3_000_000], null], once: true, upkeep: 0.005, exit: "Sell" },
+
+  // Billionaire.
+  { id: "yacht", name: "Yacht", prices: [null, null, [30_000_000, 600_000_000]], once: true, upkeep: 0.0085, exit: "Sell" },
+  { id: "jet", name: "Jet", prices: [null, null, [15_000_000, 90_000_000]], once: true, upkeep: 0.005, exit: "Sell" },
+  { id: "estate", name: "Estate", prices: [null, null, [40_000_000, 400_000_000]], once: true, upkeep: 0.0025, exit: "Sell" },
+  { id: "bunker", name: "Bunker", prices: [null, null, [10_000_000, 200_000_000]], once: true, upkeep: 0.002, exit: "Sell" },
+  { id: "island", name: "Island", prices: [null, null, [20_000_000, 500_000_000]], once: true, upkeep: 0.003, exit: "Sell" },
+  { id: "helicopter", name: "Helicopter", prices: [null, null, [4_000_000, 30_000_000]], once: true, upkeep: 0.006, exit: "Sell" },
 ];
 
 // Well-being. Hidden from the player on purpose: they see only a face.
@@ -211,10 +241,11 @@ export const WELL = {
   togetherEffect: 12,
   noise: 1.5,
   restItems: ["vacation", "ski", "family"],
-  dateItems: ["dinner", "concert", "clothes", "vacation", "ski"],
+  dateItems: ["dinner", "concert", "clothes", "vacation", "ski", "boat", "yacht"],
   // A purchase lifts well-being at once; the lift then fades with the monthly pull.
   purchaseBase: 4,
-  purchasePerDecade: 3, // extra per tenfold increase in price above $50
+  purchasePerDecade: 3, // extra per tenfold increase in price above $50...
+  purchaseDecadeCap: 2, // ...up to $5,000. Beyond that, a higher price buys no more happiness.
   purchaseLuck: [0.3, 1.5], // each purchase lands somewhere in this range
   repeatMonths: 6, // buying the same thing again this soon does less
   repeatFactor: 0.4,

@@ -59,12 +59,13 @@ on("quit", () => {
 // Everything else is found by its data attribute, because panels are rebuilt as their contents change.
 document.addEventListener("click", (ev) => {
   const el = (ev.target as HTMLElement).closest<HTMLElement>(
-    "[data-answer],[data-retire],[data-health],[data-gym],[data-food],[data-offer],[data-level],[data-down],[data-loan],[data-buy],[data-cancel],[data-move],[data-movelevel],[data-paydown]");
+    "[data-answer],[data-retire],[data-health],[data-gym],[data-drop],[data-food],[data-offer],[data-level],[data-down],[data-loan],[data-buy],[data-cancel],[data-move],[data-movelevel],[data-paydown]");
   if (!el) return;
   const d = el.dataset;
   if (d.answer !== undefined) G.answer(state, d.answer);
   else if (d.health) G.changeHealth(state);
   else if (d.gym) G.quitGym(state);
+  else if (d.drop) G.dropHolding(state, d.drop);
   else if (d.retire === "toggle") ui.adjustingRetirement = !ui.adjustingRetirement;
   else if (d.retire) G.adjustRetirement(state, Number(d.retire));
   else if (d.food) G.setFood(state, Number(d.food));

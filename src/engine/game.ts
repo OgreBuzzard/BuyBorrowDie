@@ -1,6 +1,6 @@
 // Game engine. No DOM access here: the UI reads State, calls actions, and drains `events`.
 
-import { CARDS, CATALOG, CFG, LOANS, WELL } from "./config";
+import { CARDS, CATALOG, CFG, LOANS, RESALE, TIERS, WELL } from "./config";
 import type { BuyItem, Card, LoanKind } from "./config";
 import { taxOnWages } from "./tax";
 
@@ -39,7 +39,9 @@ export interface Popup {
 export type HealthPlan = "unoffered" | "none" | "bad" | "good";
 
 /** `down` and `loan` are used only by the House offer. */
-export interface Offer { id: string; level: number; down: number; loan: LoanKind }
+export interface Offer { id: string; level: number; down: number; loan: LoanKind; tier: number }
+/** Something owned that costs money every month. */
+export interface Holding { id: string; name: string; price: number; monthly: number; exit: "Sell" | "Quit" }
 
 export interface Mortgage {
   kind: LoanKind;
@@ -100,7 +102,8 @@ export interface State {
   cause: string | null; // cause of death, when the game has decided one
   home: { kind: "none" } | { kind: "apartment"; level: number; rent: number } | { kind: "house" };
   mortgage: Mortgage | null;
-  shop: { offers: Offer[]; next: number; bought: string[] };
+  shop: { offers: Offer[]; next: number; bought: string[]; tier: number }; // tier only ever rises
+  holdings: Holding[];
   well: {
     w: number; // 0 to 100, hidden
     sickLeft: number;
@@ -151,7 +154,9 @@ const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x
 const between = ([lo, hi]: number[]) => lo + (hi - lo) * rng();
 
 export const item = (id: string): BuyItem => CATALOG.find((i) => i.id === id)!;
-const offerFor = (it: BuyItem): Offer => ({ id: it.id, level: it.max ? CFG.buyDefaultLevel : 0, down: CFG.buyDefaultLevel, loan: "fixed30" });
+const hasMeter = (it: BuyItem, tier: number) => Array.isArray(it.prices[tier]);
+const offerFor = (it: BuyItem, tier: number): Offer =>
+  ({ id: it.id, level: hasMeter(it, tier) ? CFG.buyDefaultLevel : 0, down: CFG.buyDefaultLevel, loan: "fixed30", tier });
 
 export function newGame(generation = 1): State {
   return {
@@ -177,7 +182,8 @@ export function newGame(generation = 1): State {
     cause: null,
     home: { kind: "none" },
     mortgage: null,
-    shop: { offers: CATALOG.slice(0, 3).map(offerFor), next: 3, bought: [] },
+    shop: { offers: CATALOG.slice(0, 3).map((it) => offerFor(it, 0)), next: 3, bought: [], tier: 0 },
+    holdings: [],
     well: { w: WELL.start, sickLeft: 0, sinceRest: 0, crushLeft: 0, dates: 0, togetherLeft: 0, lowStreak: 0, graceLeft: 0, lastBought: {} },
     health: { plan: "unoffered", offered: false, resumePlan: null, extended: false, joblessMonths: 0, uninsuredMonths: 0, noGymMonths: 0 },
     retire: { offered: false, enrolled: false, rate: 0, balance: 0, growth: CFG.growthStart, ytd: 0 },
@@ -225,18 +231,31 @@ export const rentMonthly = (s: State) => (s.home.kind === "apartment" ? s.home.r
 export const healthMonthly = (s: State) =>
   (CFG.healthCost[s.health.plan] ?? 0) * (s.health.extended ? CFG.healthJoblessMultiplier : 1);
 export const gymMonthly = (s: State) => (s.gym ? s.gym.monthly : 0);
-export const monthlyExpenses = (s: State) => foodMonthly(s) + transportMonthly(s) + rentMonthly(s) + healthMonthly(s) + gymMonthly(s);
+export const holdingsMonthly = (s: State) => s.holdings.reduce((a, h) => a + h.monthly, 0);
+export const monthlyExpenses = (s: State) =>
+  foodMonthly(s) + transportMonthly(s) + rentMonthly(s) + healthMonthly(s) + gymMonthly(s) + holdingsMonthly(s);
 const usd = (n: number) => "$" + Math.round(n).toLocaleString("en-US");
 export const housingLabel = (s: State) => (s.home.kind === "apartment" ? "Rent" : s.home.kind === "house" ? "Mortgage" : "");
 
 /** Price at a meter level: cheap at 0, nice at the top, evenly spaced by ratio. */
-export function priceOf(it: BuyItem, level: number): number {
-  if (!it.max) return it.min;
-  const raw = it.min * (it.max / it.min) ** (level / CFG.buyNotches);
+export function priceOf(it: BuyItem, level: number, tier = 0): number {
+  const p = it.prices[tier] ?? it.prices.find((x) => x !== null)!;
+  if (!Array.isArray(p)) return p as number;
+  const [min, max] = p;
+  const raw = min * (max / min) ** (level / CFG.buyNotches);
   const mag = 10 ** (Math.floor(Math.log10(raw)) - 1);
   return Math.round(raw / mag) * mag; // two significant figures
 }
-export const offerPrice = (o: Offer) => priceOf(item(o.id), o.level);
+export const offerHasMeter = (o: Offer) => hasMeter(item(o.id), o.tier);
+/** Monthly cost of owning the thing on offer, if it has one. */
+export function offerUpkeep(o: Offer): number {
+  const it = item(o.id);
+  if (!it.upkeep) return 0;
+  const raw = (it.upkeepBase ?? 0) + offerPrice(o) * it.upkeep;
+  const mag = 10 ** (Math.floor(Math.log10(raw)) - 1);
+  return Math.round(raw / mag) * mag;
+}
+export const offerPrice = (o: Offer) => priceOf(item(o.id), o.level, o.tier);
 
 const amortized = (balance: number, annualRate: number, months: number) => {
   const r = annualRate / 12;
@@ -376,7 +395,8 @@ function wellMonth(s: State, workedFully: boolean, extraShare: number) {
 
 function wellPurchase(s: State, it: BuyItem, price: number) {
   const k = s.well;
-  let boost = WELL.purchaseBase + WELL.purchasePerDecade * Math.max(0, Math.log10(price / 50));
+  // What a thing costs stops mattering quickly: a yacht lifts the mood about as much as a good coat.
+  let boost = WELL.purchaseBase + WELL.purchasePerDecade * clamp(Math.log10(price / 50), 0, WELL.purchaseDecadeCap);
   boost *= between(WELL.purchaseLuck);
   const last = k.lastBought[it.id];
   if (last !== undefined && s.months - last < WELL.repeatMonths) boost *= WELL.repeatFactor;
@@ -542,6 +562,7 @@ function month(s: State) {
   }
 
   ventureMonth(s);
+  tierCheck(s);
 
   // 6. Year end: bonus, then a raise, both shaped by the year's work. Founders get neither.
   if (s.months % 12 === 0) {
@@ -674,6 +695,7 @@ export function migrate(s: State): State {
     }
   };
   fill(s as unknown as Record<string, unknown>, fresh as unknown as Record<string, unknown>);
+  for (const o of s.shop.offers) if (o.tier === undefined) o.tier = 0;
   // A founder whose company already had a value: the easing and the first card start now.
   if (s.venture.valued && !s.venture.valuedAt && !s.venture.nextCardAt) {
     s.venture.valuedAt = s.months - 10; // the work bar has already begun to ease
@@ -829,7 +851,7 @@ export function setFood(s: State, delta: number) {
 
 export function setOfferLevel(s: State, slot: number, delta: number) {
   const o = s.shop.offers[slot];
-  if (o && item(o.id).max) o.level = clamp(o.level + delta, 0, CFG.buyNotches);
+  if (o && offerHasMeter(o)) o.level = clamp(o.level + delta, 0, CFG.buyNotches);
 }
 export function setOfferDown(s: State, slot: number, delta: number) {
   const o = s.shop.offers[slot];
@@ -851,6 +873,8 @@ export function buy(s: State, slot: number) {
 
   if (it.id === "house") {
     const h = houseTerms(s, o);
+    // Trading up: the old house is sold and what was paid into it comes back.
+    if (s.mortgage) s.cash += homeEquity(s);
     s.mortgage = {
       kind: h.kind, termMonths: h.loan.years * 12, elapsed: 0, ioLeft: (h.loan.ioYears ?? 0) * 12,
       homeValue: price, original: h.borrowed, balance: h.borrowed, rate: h.rate, payment: h.payment,
@@ -863,22 +887,61 @@ export function buy(s: State, slot: number) {
     if (it.id === "apartment") s.home = { kind: "apartment", level: o.level, rent: price };
     if (it.id === "gym") s.gym = { level: o.level, monthly: price };
     if (it.id === "car") s.car = { monthly: Math.round(CFG.carMonthlyBase + price * CFG.carMonthlyPerDollar) };
+    if (it.upkeep && it.exit) s.holdings.push({ id: it.id, name: it.name, price, monthly: offerUpkeep(o), exit: it.exit });
   }
   s.events.push({ kind: "buy", name: it.name, amount: upfront });
-  s.shop.bought.push(it.id);
+  s.shop.bought.push(it.oncePerTier ? `${it.id}@${o.tier}` : it.id);
   wellPurchase(s, it, it.perMonth ? price * 12 : price);
+  s.shop.offers[slot] = nextOffer(s, slot);
+}
 
-  // Next catalog item that is eligible and not already on offer.
-  const showing = s.shop.offers.map((x) => x.id);
+/** Whether an item can be put on offer at the player's tier. */
+function eligible(s: State, it: BuyItem): boolean {
+  const tier = s.shop.tier, b = s.shop.bought;
+  if (it.prices[tier] === null) return false;
+  if (it.once && b.includes(it.id)) return false;
+  if (it.oncePerTier && b.includes(`${it.id}@${tier}`)) return false;
+  if (it.requires && tier === 0 && !b.includes(it.requires)) return false;
+  return true;
+}
+
+/** Next catalog item that is eligible and not already on offer. */
+function nextOffer(s: State, slot: number): Offer {
+  const showing = s.shop.offers.filter((_, i) => i !== slot).map((x) => x.id);
   for (let i = 0; i < CATALOG.length; i++) {
     const cand = CATALOG[(s.shop.next + i) % CATALOG.length];
-    if (showing.includes(cand.id)) continue;
-    if (cand.once && s.shop.bought.includes(cand.id)) continue;
-    if (cand.requires && !s.shop.bought.includes(cand.requires)) continue;
-    s.shop.offers[slot] = offerFor(cand);
+    if (showing.includes(cand.id) || !eligible(s, cand)) continue;
     s.shop.next = (s.shop.next + i + 1) % CATALOG.length;
-    return;
+    return offerFor(cand, s.shop.tier);
   }
+  return offerFor(item("clothes"), s.shop.tier);
+}
+
+/** Sell or quit something that costs money every month. Selling returns part of the price. */
+export function dropHolding(s: State, id: string) {
+  const h = s.holdings.find((x) => x.id === id);
+  if (s.dead || !h) return;
+  s.holdings = s.holdings.filter((x) => x.id !== id);
+  s.shop.bought = s.shop.bought.filter((x) => x !== id);
+  if (h.exit === "Sell") s.cash += h.price * RESALE;
+}
+
+/** Moving up a wealth tier changes what is for sale. The tier never goes back down. */
+function tierCheck(s: State) {
+  const nw = netWorth(s);
+  let tier = s.shop.tier;
+  while (tier + 1 < TIERS.length && nw >= TIERS[tier + 1].netWorth) tier++;
+  if (tier === s.shop.tier) return;
+  s.shop.tier = tier;
+  // Lead with what is new at this tier.
+  s.shop.next = Math.max(0, CATALOG.findIndex((it) => it.prices[tier] !== null && it.prices[tier - 1] === null));
+  s.shop.offers = [];
+  for (let i = 0; i < 3; i++) s.shop.offers.push(nextOffer(s, i));
+  s.popups.push({
+    id: "tier-" + tier, title: TIERS[tier].name,
+    text: "Some things are no longer worth your attention.\n\nOther things are now for sale.",
+    choices: [{ label: "OKAY", value: "ok" }],
+  });
 }
 
 /** Cancel the gym. It can be joined again later from Buy. */

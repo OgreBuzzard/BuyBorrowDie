@@ -166,6 +166,9 @@ function renderExpenses(s: State) {
   show("move", renting);
   show("gym-row", !!s.gym);
   text("gym-cost", perMonth(G.gymMonthly(s)));
+  html("holdings", s.holdings.map((h) => h.id + h.monthly).join("|"), () => s.holdings.map((h) => `
+    <div class="cost-row"><span>${esc(h.name)}</span><span>${perMonth(h.monthly)}</span>
+      <button class="mini" type="button" data-drop="${h.id}">${h.exit}</button></div>`).join(""));
   const insured = s.health.plan === "bad" || s.health.plan === "good";
   show("health-row", s.health.offered);
   text("health-cost", insured ? perMonth(G.healthMonthly(s)) : "none");
@@ -209,7 +212,6 @@ function renderBuy(s: State) {
   const sel = offers[ui.selected];
   show("buy-panel", !!sel);
   if (!sel) return;
-  const it = G.item(sel.id);
   const ok = G.canBuy(s, sel);
   if (sel.id === "house") {
     html("buy-panel", ["h", sel.level, sel.down, sel.loan, s.loanRate, ok].join("|"), () => housePanel(s, sel));
@@ -223,7 +225,8 @@ function renderBuy(s: State) {
       meter("", "level", sel.level) + confirmRow(`Join for ${perMonth(G.offerPrice(sel))}`, 'data-buy="1"'));
   } else {
     html("buy-panel", "i" + sel.id + sel.level, () =>
-      (it.max ? meter("", "level", sel.level) : "") + confirmRow(`Buy for ${usd(G.offerPrice(sel))}`, 'data-buy="1"'));
+      (G.offerHasMeter(sel) ? meter("", "level", sel.level) : "") + confirmRow(`Buy for ${usd(G.offerPrice(sel))}`, 'data-buy="1"')
+      + (G.offerUpkeep(sel) ? `<div class="note">Then ${perMonth(G.offerUpkeep(sel))}.</div>` : ""));
   }
 }
 
