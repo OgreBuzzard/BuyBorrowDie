@@ -79,8 +79,17 @@ export const CFG = {
   founderFailChance: [0.6, 0.35, 0], // by attempt: most first companies fail
   founderExitPackage: [80_000, 250_000], // what the founder leaves a failed company with
   founderFirstValuation: [600_000, 2_500_000],
-  stakeGrowth: 0.3, // annualized, placeholder until event cards drive it
-  stakeNoise: 0.06, // monthly
+  stakeGrowth: 0.08, // annualized drift between event cards; the cards do the real work
+  stakeNoise: 0.03, // monthly
+  founderEaseTapsPerMonth: 1, // after the first valuation the work bar loses a notch a month, down to one tap
+  cardNegativeChance: 0.25, // one event card a year, at a random month
+
+  // Credit line against the ownership stake.
+  creditMinStake: 1_000_000,
+  creditAfterMonths: 3, // months after the first valuation
+  creditLimit: 0.4, // share of the stake's value
+  creditRateDiscount: 0.01, // below the ordinary loan rate
+  creditRateFloor: 0.03,
   declinedDeathAge: [55, 67],
   declinedCauses: [
     "Heart disease", "Stroke", "Complications of type 2 diabetes", "Colon cancer", "Pulmonary embolism",
@@ -238,3 +247,41 @@ export const WELL = {
   slowRehireBelow: 30,
   slowRehireExtraMonths: 2,
 };
+
+/** Event cards. One a year once the company has a value. Nearly all point the same way. */
+export interface Card {
+  id: string;
+  title: string;
+  text: string;
+  factor: number; // the stake is multiplied by this at once
+  recoverMonths?: number; // negative cards: the loss is made back over this long
+  minStake?: number;
+  after?: string; // only drawn once this other card has been played
+  next?: string; // this card follows next year
+}
+export const CARDS: Card[] = [
+  { id: "acquire", title: "Acquisition", text: "You acquire your largest competitor. Regulators approve.", factor: 1.5 },
+  { id: "incentive", title: "Tax Incentive", text: "A city offers ten years without property tax if you open an office there. You accept.", factor: 1.2 },
+  { id: "lobby", title: "Lobbying", text: "You fund an industry group. A bill that would have cost you money dies in committee.", factor: 1.25 },
+  { id: "prices", title: "Pricing", text: "Your customers have nowhere else to go. You raise prices.", factor: 1.3 },
+  { id: "contractors", title: "Contractors", text: "You reclassify your workforce as contractors. Their benefits are no longer your expense.", factor: 1.25 },
+  { id: "supplier", title: "Supplier", text: "You buy the supplier your competitors depend on.", factor: 1.35 },
+  { id: "patents", title: "Patents", text: "You move the company's patents to a subsidiary in a low-tax country.", factor: 1.2 },
+  { id: "votes", title: "Voting Shares", text: "You issue yourself a class of shares with ten votes each. You control the board.", factor: 1.15 },
+  { id: "contract", title: "Government Contract", text: "A government contract arrives without competitive bidding.", factor: 1.4 },
+  { id: "noncompete", title: "Non-Competes", text: "Employees now sign agreements not to work for competitors. Wages stop rising.", factor: 1.15 },
+  { id: "startup", title: "Startup", text: "You buy a promising startup and shut it down.", factor: 1.2 },
+  { id: "ipo", title: "Public Offering", text: "The company goes public. The share price doubles on the first day.", factor: 2, minStake: 20_000_000 },
+  { id: "layoffs", title: "Layoffs", text: "You lay off 12% of the staff. The share price rises.", factor: 1.2 },
+  { id: "buyback", title: "Buyback", text: "The company borrows cheaply and buys back its own shares.", factor: 1.25, after: "ipo" },
+  { id: "standard", title: "Industry Standard", text: "An industry standard is written around your product.", factor: 1.3 },
+  { id: "settlement", title: "Settlement", text: "You settle an antitrust case for less than one week of revenue.", factor: 1.15 },
+  { id: "election", title: "Election", text: "A landslide election puts pro-business politicians in power. The proposed regulation is withdrawn.", factor: 1.4, after: "regulation" },
+
+  { id: "scandal", title: "Scandal", text: "Your cofounder is caught in an infidelity scandal. Investors are nervous.", factor: 0.6, recoverMonths: 8 },
+  { id: "regulation", title: "Regulation", text: "A senator proposes regulating your industry.", factor: 0.7, recoverMonths: 10, next: "election" },
+  { id: "breach", title: "Data Breach", text: "Hackers publish your customers' records. You offer them a year of credit monitoring.", factor: 0.8, recoverMonths: 6 },
+  { id: "strike", title: "Strike", text: "Warehouse staff walk out for two weeks.", factor: 0.85, recoverMonths: 5 },
+  { id: "whistleblower", title: "Whistleblower", text: "A former employee talks to a newspaper.", factor: 0.75, recoverMonths: 7 },
+  { id: "hearing", title: "Hearing", text: "You are called to testify before Congress. You do not recall.", factor: 0.85, recoverMonths: 4 },
+];

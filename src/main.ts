@@ -5,6 +5,7 @@ import * as G from "./engine/game";
 import type { State } from "./engine/game";
 import { handleEvents, render, ui } from "./ui/render";
 
+// The key keeps its name so a game in progress survives an update; older saves are migrated.
 const SAVE_KEY = "bbd.save.v8";
 
 function load(): State | null {
@@ -12,7 +13,7 @@ function load(): State | null {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as State;
-    return s && s.v === 8 ? s : null;
+    return s && (s.v as number) >= 8 ? G.migrate(s) : null;
   } catch { return null; }
 }
 function save() {
@@ -85,6 +86,7 @@ document.addEventListener("click", (ev) => {
 
 // Space bar works. It never answers a pop-up or presses whatever button has focus, and holding it down does nothing.
 document.addEventListener("keydown", (ev) => {
+  document.body.classList.add("has-keyboard");
   if (ev.code !== "Space") return;
   ev.preventDefault();
   if (ev.repeat || ui.paused || state.popups.length) return;

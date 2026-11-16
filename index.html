@@ -17,6 +17,9 @@
     <div class="ticker" id="ticker" aria-live="polite"></div>
     <div class="vitals">
       <div>
+        <div class="stat" id="cash-line">Cash: <span id="cash">$0</span></div>
+        <div class="stat sub" id="interest-line">Interest: <span id="apr">6%</span></div>
+        <div class="stat sub" id="credit-line" hidden>Can borrow: <span id="credit">$0</span></div>
         <div class="stat" id="own-box" hidden>Ownership: <span id="own">$0</span></div>
         <div id="retire-box" hidden>
           <div class="stat retire-line">Retirement: <span id="retire">$0</span>
@@ -27,10 +30,9 @@
             <button class="pm" type="button" data-retire="1" aria-label="Contribute more">+</button>
             <span class="note">of each paycheck</span>
           </div>
-          <div class="stat">Growth: <span id="growth">5%</span></div>
+          <div class="stat sub">Growth: <span id="growth">5%</span></div>
         </div>
         <div class="stat" id="age">Age 22 and 0 months</div>
-        <div class="stat">Loan Interest: <span id="apr">6%</span></div>
       </div>
       <div class="face" id="face" role="img" aria-label="How you feel">🙂</div>
     </div>

@@ -1,4 +1,4 @@
-# Buy, Borrow, Die — prototype 0.8
+# Buy, Borrow, Die — prototype 0.9
 
 Incremental game about wealth and tax. Design doc lives in the Claude project ("Buy, Borrow, Die" → `claude/design-doc.md`).
 
@@ -18,7 +18,7 @@ Incremental game about wealth and tax. Design doc lives in the Claude project ("
 - `src/main.ts` — clock loop, save/load (localStorage), event wiring.
 - `scripts/sim.ts` — headless month-by-month checks.
 
-## Current build: 0.8, the opening
+## Current build: 0.9
 
 Net worth starts at -$80,000 of student debt. Food, transport and rent drain it continuously. Each month end:
 interest on debt (drifting APY), paycheck, mortgage payment, well-being update. End of month 4: last year's
@@ -36,10 +36,13 @@ Pop-up messages stop the clock until answered (`Popup` in `game.ts`; `answer()` 
 year-end bonus, taxes due, the retirement match, health care, and the cofounder offer. The space bar is an
 alternate Work button.
 
-The cofounder offer comes once, in the late twenties (`ventureMonth()` in `game.ts`). Taking it halves-ish the
+The cofounder offer comes once, in the late twenties (`ventureMonth()` in `game.ts`). Taking it cuts the
 salary, doubles both work bars, and adds an Ownership line that is worth nothing for 18-30 months. The company
-then either fails (exit package, next company) or gets its first valuation and grows. Declining is permanent
-and shortens the player's life.
+then either fails (exit package, next company) or gets its first valuation. From then on the work bar loses a
+notch a month, the bank offers a credit line against the stake, and one event card a year (`CARDS` in
+`config.ts`) moves the stake's value. Declining the offer is permanent and shortens the player's life.
+
+Saves from earlier builds are brought up to date by `migrate()` rather than discarded.
 
 Pause is at the bottom. Other test controls are in the browser console: `bbd.speed = 20`, `bbd.reset()`, `bbd.state()`.
 

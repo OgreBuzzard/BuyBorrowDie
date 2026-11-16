@@ -1,7 +1,7 @@
 // Game engine. No DOM access here: the UI reads State, calls actions, and drains `events`.
 
-import { CATALOG, CFG, LOANS, WELL } from "./config";
-import type { BuyItem, LoanKind } from "./config";
+import { CARDS, CATALOG, CFG, LOANS, WELL } from "./config";
+import type { BuyItem, Card, LoanKind } from "./config";
 import { taxOnWages } from "./tax";
 
 export type GameEvent =
@@ -57,7 +57,7 @@ export interface Mortgage {
 }
 
 export interface State {
-  v: 8;
+  v: 9;
   generation: number; // hook for heirs
   t: number; // years since start
   months: number; // whole months processed
@@ -90,7 +90,13 @@ export interface State {
     dormantFor: number; // months before the stake is worth anything, or the company fails
     valued: boolean;
     value: number; // the player's stake. Counts toward net worth. Cannot be sold.
+    valuedAt: number; // month of the first valuation
+    nextCardAt: number; // month the next event card arrives
+    played: string[]; // event cards already seen
+    queued: string | null; // a card that must come next
+    recover: { factor: number; monthsLeft: number } | null; // climbing back from a bad card
   };
+  credit: { open: boolean }; // a credit line against the stake
   cause: string | null; // cause of death, when the game has decided one
   home: { kind: "none" } | { kind: "apartment"; level: number; rent: number } | { kind: "house" };
   mortgage: Mortgage | null;
@@ -149,7 +155,7 @@ const offerFor = (it: BuyItem): Offer => ({ id: it.id, level: it.max ? CFG.buyDe
 
 export function newGame(generation = 1): State {
   return {
-    v: 8,
+    v: 9,
     generation,
     t: 0,
     months: 0,
@@ -165,7 +171,9 @@ export function newGame(generation = 1): State {
     venture: {
       offerAt: Math.round(between(CFG.founderOfferMonths)), offered: false, declined: false, active: false,
       attempt: 0, monthsIn: 0, dormantFor: 0, valued: false, value: 0,
+      valuedAt: 0, nextCardAt: 0, played: [], queued: null, recover: null,
     },
+    credit: { open: false },
     cause: null,
     home: { kind: "none" },
     mortgage: null,
@@ -194,8 +202,21 @@ export const salaryNow = (s: State) => (s.job.employed ? s.job.salary : 0);
 export const canWork = (s: State) => s.job.employed && s.well.sickLeft <= 0;
 export const homeEquity = (s: State) => (s.mortgage ? s.mortgage.homeValue - s.mortgage.balance : 0);
 export const netWorth = (s: State) => s.cash + homeEquity(s) + s.retire.balance + s.venture.value;
-/** Taps to fill the regular work bar. Founders need twice as many. */
-export const tapsNeeded = (s: State) => CFG.tapsToFill * (s.venture.active ? CFG.founderWorkMultiplier : 1);
+/** Taps to fill the regular work bar. Founders need twice as many, until the company has a value:
+ *  then the bar loses a notch a month, down to a single tap. */
+export function tapsNeeded(s: State): number {
+  const v = s.venture;
+  if (!v.active) return CFG.tapsToFill;
+  const full = CFG.tapsToFill * CFG.founderWorkMultiplier;
+  return v.valued ? Math.max(1, full - CFG.founderEaseTapsPerMonth * (s.months - v.valuedAt)) : full;
+}
+export const debt = (s: State) => Math.max(0, -s.cash);
+/** Rate charged on debt. Lower once the bank lends against the stake. */
+export const debtRate = (s: State) =>
+  s.credit.open ? Math.max(CFG.creditRateFloor, Math.round((s.loanRate - CFG.creditRateDiscount) * 10000) / 10000) : s.loanRate;
+/** How much more the bank will lend against the stake. */
+export const creditAvailable = (s: State) =>
+  s.credit.open ? Math.max(0, Math.round(s.venture.value * CFG.creditLimit) - debt(s)) : 0;
 
 export const foodMonthly = (s: State) => CFG.foodBase + CFG.foodPerNotch * s.food;
 export const transportMonthly = (s: State) => (s.car ? s.car.monthly : CFG.busFare);
@@ -244,8 +265,8 @@ export function upfrontCost(s: State, o: Offer): number {
   // A gym charges the first month on joining.
   return price;
 }
-/** A house needs its down payment in cash. Everything else can go on debt. */
-export const canBuy = (s: State, o: Offer) => o.id !== "house" || s.cash >= upfrontCost(s, o);
+/** A house needs its down payment in cash, or from a credit line. Everything else can go on debt. */
+export const canBuy = (s: State, o: Offer) => o.id !== "house" || Math.max(0, s.cash) + creditAvailable(s) >= upfrontCost(s, o);
 
 /** What the mortgage costs this month: interest on what is owed, and what comes off the principal. */
 export function nextPayment(m: Mortgage) {
@@ -379,7 +400,7 @@ function loseJob(s: State, payCut = CFG.rehirePayCut) {
   s.well.lowStreak = 0;
   // A founder who walks away or is pushed out leaves the stake behind.
   const v = s.venture;
-  if (v.active) { v.active = false; v.valued = false; v.value = 0; }
+  if (v.active) { v.active = false; v.valued = false; v.value = 0; v.recover = null; v.queued = null; }
 }
 
 function month(s: State) {
@@ -387,7 +408,7 @@ function month(s: State) {
 
   // 1. Interest on debt, before the paycheck lands.
   if (s.cash < 0) {
-    const int = -s.cash * ((1 + s.loanRate) ** (1 / 12) - 1);
+    const int = -s.cash * ((1 + debtRate(s)) ** (1 / 12) - 1);
     s.cash -= int;
     s.totals.interest += int;
     s.events.push({ kind: "interest", amount: int });
@@ -574,6 +595,19 @@ function ventureMonth(s: State) {
   v.monthsIn++;
   if (v.valued) {
     v.value = Math.max(0, v.value * (1 + CFG.stakeGrowth) ** (1 / 12) * (1 + CFG.stakeNoise * gauss()));
+    if (v.recover) {
+      v.value *= v.recover.factor;
+      if (--v.recover.monthsLeft <= 0) v.recover = null;
+    }
+    if (!s.credit.open && v.value >= CFG.creditMinStake && s.months - v.valuedAt >= CFG.creditAfterMonths) {
+      s.credit.open = true;
+      s.popups.push({
+        id: "credit-line", title: "A Credit Line",
+        text: "Your bank will lend against your ownership stake, at a lower rate than your old loans.\n\nBorrowed money is not income. It is not taxed.",
+        choices: [{ label: "OKAY", value: "ok" }],
+      });
+    }
+    if (s.months >= v.nextCardAt) playCard(s);
     return;
   }
   if (v.monthsIn < v.dormantFor) return;
@@ -591,6 +625,8 @@ function ventureMonth(s: State) {
     });
   } else {
     v.valued = true;
+    v.valuedAt = s.months;
+    v.nextCardAt = s.months + 1 + Math.floor(rng() * 12);
     v.value = Math.round(between(CFG.founderFirstValuation) / 10000) * 10000;
     s.popups.push({
       id: "venture-valued", title: "Ownership",
@@ -598,6 +634,53 @@ function ventureMonth(s: State) {
       choices: [{ label: "OKAY", value: "ok" }],
     });
   }
+}
+
+/** One event card a year, at a random month within the year. */
+function playCard(s: State) {
+  const v = s.venture;
+  const yearsIn = Math.floor((s.months - v.valuedAt) / 12) + 1;
+  v.nextCardAt = v.valuedAt + 12 * yearsIn + Math.floor(rng() * 12);
+
+  const eligible = (c: Card) =>
+    !v.played.includes(c.id) && (c.minStake ?? 0) <= v.value && (!c.after || v.played.includes(c.after));
+  let card = v.queued ? CARDS.find((c) => c.id === v.queued) : undefined;
+  v.queued = null;
+  if (!card) {
+    const wantBad = !v.recover && rng() < CFG.cardNegativeChance;
+    let pool = CARDS.filter((c) => eligible(c) && (c.factor < 1) === wantBad && c.id !== "election");
+    if (!pool.length) pool = CARDS.filter((c) => eligible(c) && c.factor >= 1 && c.id !== "election");
+    // Deck exhausted: shuffle it back in. Going public happens once.
+    if (!pool.length) { v.played = v.played.filter((id) => id === "ipo"); pool = CARDS.filter((c) => eligible(c) && c.factor >= 1 && !c.after); }
+    card = pool[Math.floor(rng() * pool.length)];
+  }
+  v.played.push(card.id);
+  if (card.next) v.queued = card.next;
+  v.value *= card.factor;
+  if (card.recoverMonths) v.recover = { factor: (1 / card.factor) ** (1 / card.recoverMonths), monthsLeft: card.recoverMonths };
+  s.popups.push({ id: "card-" + card.id, title: card.title, text: card.text, choices: [{ label: "OKAY", value: "ok" }] });
+}
+
+/** Bring a save from an earlier build up to date, so a game in progress carries on. */
+export function migrate(s: State): State {
+  const fresh = newGame(s.generation);
+  const fill = (target: Record<string, unknown>, source: Record<string, unknown>) => {
+    for (const k of Object.keys(source)) {
+      const a = target[k], b = source[k];
+      if (a === undefined) target[k] = b;
+      else if (a && b && typeof a === "object" && typeof b === "object" && !Array.isArray(a) && !Array.isArray(b)) {
+        fill(a as Record<string, unknown>, b as Record<string, unknown>);
+      }
+    }
+  };
+  fill(s as unknown as Record<string, unknown>, fresh as unknown as Record<string, unknown>);
+  // A founder whose company already had a value: the easing and the first card start now.
+  if (s.venture.valued && !s.venture.valuedAt && !s.venture.nextCardAt) {
+    s.venture.valuedAt = s.months - 10; // the work bar has already begun to ease
+    s.venture.nextCardAt = s.months + 1 + Math.floor(rng() * 12);
+  }
+  s.v = 9;
+  return s;
 }
 
 /** Pass an amount through cash over a few seconds, so the player watches it happen. */
@@ -668,7 +751,7 @@ function healthOffer(): Popup {
   return {
     id: "health-offer",
     title: "Health Care",
-    text: "Sometimes you get sick. If you want to be able to do anything about it, you need this.",
+    text: `Sometimes you get sick. If you want to be able to do anything about it, you need this.\n\nBad: ${usd(CFG.healthCost.bad)} a month.\nGood: ${usd(CFG.healthCost.good)} a month.`,
     choices: [{ label: "NONE", value: "none" }, { label: "BAD", value: "bad" }, { label: "GOOD", value: "good" }],
   };
 }

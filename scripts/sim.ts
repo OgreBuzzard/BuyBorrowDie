@@ -27,7 +27,7 @@ for (const bot of bots) {
   for (let m = 1; m <= 480 && !s.dead; m++) {
     for (let i = 0; i < G.tapsNeeded(s) + (bot.extra ?? 0); i++) G.work(s);
     G.advance(s, 1 / 12);
-    while (s.popups.length) { const id = s.popups[0].id; if (id.startsWith("venture") || id === "founder-offer") log += ` [${G.ageYears(s)}: ${s.popups[0].title}]`; G.answer(s, id === "retirement-offer" ? "0.05" : id === "health-offer" ? (bot.health ?? "bad") : id === "health-continue" ? "keep" : id === "founder-offer" ? (bot.join ? "join" : "stay") : "ok"); G.advance(s, m / 12 - s.t); }
+    while (s.popups.length) { const id = s.popups[0].id; if (id.startsWith("venture") || id.startsWith("card-") || id.startsWith("credit") || id === "founder-offer") log += ` [${G.ageYears(s)}: ${s.popups[0].title}]`; G.answer(s, id === "retirement-offer" ? "0.05" : id === "health-offer" ? (bot.health ?? "bad") : id === "health-continue" ? "keep" : id === "founder-offer" ? (bot.join ? "join" : "stay") : "ok"); G.advance(s, m / 12 - s.t); }
     s.t = m / 12;
     for (const e of s.events.splice(0)) { if (e.kind === "fired") fired++; if (e.kind === "doctor") sick++; }
     if (bot.buyEvery && m % bot.buyEvery === 0) {

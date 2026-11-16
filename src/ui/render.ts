@@ -84,7 +84,15 @@ export function render(s: State) {
   $("nw").classList.toggle("neg", nw < 0);
   const m = G.ageMonths(s);
   text("age", `Age ${G.ageYears(s)} and ${m} ${m === 1 ? "month" : "months"}`);
-  text("apr", rate(s.loanRate));
+  // Cash, or debt with its interest rate. The credit line shows how much more can be borrowed.
+  const owed = G.debt(s);
+  $("cash-line").firstChild!.textContent = owed > 0 ? "Debt: " : "Cash: ";
+  text("cash", usd(owed > 0 ? owed : s.cash));
+  $("cash").classList.toggle("neg", owed > 0);
+  show("interest-line", owed > 0);
+  text("apr", rate(G.debtRate(s)));
+  show("credit-line", s.credit.open);
+  text("credit", usd(G.creditAvailable(s)));
   text("face", G.face(s));
   renderPopup(s);
   if (s.dead) return renderEnd(s);

@@ -42,6 +42,9 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--ink); outl
 .nw { font: 600 clamp(19px, 5.6vw, 25px)/1.2 var(--font-display); white-space: nowrap; }
 .nw #nw { font: 700 clamp(20px, 5.9vw, 26px)/1.2 var(--font-body); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .stat { font-size: 15px; line-height: 1.3; }
+/* A detail that belongs to the line above it. */
+.stat.sub { padding-left: 14px; color: var(--muted); }
+.stat.sub::before { content: "\21B3"; margin-right: 6px; }
 .neg { color: var(--neg); }
 .pos { color: var(--go); }
 
@@ -68,7 +71,9 @@ h2 { margin: 0; font: 600 17px/1.2 var(--font-display); }
 }
 .work { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; }
 .key-hint { display: none; font: 500 12px/1 var(--font-body); opacity: 0.85; }
+/* Shown on computers, and on anything else once a real key has been pressed. */
 @media (hover: hover) and (pointer: fine) { .key-hint { display: block; } }
+.has-keyboard .key-hint { display: block; }
 .work:disabled .key-hint { display: none; }
 .work:active:not(:disabled) { transform: translateY(2px); border-bottom-width: 3px; height: 72px; margin-bottom: 2px; }
 .work:disabled { background: var(--idle); color: var(--muted); border-bottom-color: var(--rule); cursor: default; }
