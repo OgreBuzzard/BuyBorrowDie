@@ -85,7 +85,7 @@ h2 { margin: 0; font: 600 17px/1.2 var(--font-display); }
 .overlay { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 20px; background: color-mix(in srgb, var(--ink) 55%, transparent); }
 .popup { width: 100%; max-width: 380px; background: var(--paper); border: 2px solid var(--ink); border-radius: 16px; padding: 20px 18px 18px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3); animation: pop 0.18s ease-out; }
 .popup h3 { margin: 0; font: 600 22px/1.2 var(--font-display); }
-.popup p { margin: 0; font: 500 18px/1.35 var(--font-body); text-wrap: pretty; }
+.popup p { white-space: pre-line; margin: 0; font: 500 18px/1.35 var(--font-body); text-wrap: pretty; }
 .popup-choices { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
 .popup-choices.stack { grid-auto-flow: row; }
 .popup-choices button { min-height: 50px; padding: 8px; font: 700 17px/1.1 var(--font-body); color: var(--ink); background: var(--panel); border: 1.5px solid var(--ink); border-radius: 12px; cursor: pointer; }
@@ -100,7 +100,7 @@ h2 { margin: 0; font: 600 17px/1.2 var(--font-display); }
 
 .thermo { position: relative; width: 24px; flex: none; border: 2px solid var(--ink); border-radius: 12px; background: var(--panel); overflow: hidden; }
 .thermo-fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: var(--go); transition: height 0.12s ease-out; }
-.thermo-ticks { position: absolute; inset: 0; background: repeating-linear-gradient(to top, transparent 0, transparent calc(12.5% - 1.5px), var(--ink) calc(12.5% - 1.5px), var(--ink) 12.5%); opacity: 0.35; }
+.thermo-ticks { position: absolute; inset: 0; background: repeating-linear-gradient(to top, transparent 0, transparent calc(var(--step, 12.5%) - 1.5px), var(--ink) calc(var(--step, 12.5%) - 1.5px), var(--ink) var(--step, 12.5%)); opacity: 0.35; }
 .thermo.off { opacity: 0.35; }
 /* Extra work: same size, red, holds its place in the row while hidden. */
 .thermo.extra { visibility: hidden; }

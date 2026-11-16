@@ -5,14 +5,14 @@ import * as G from "./engine/game";
 import type { State } from "./engine/game";
 import { handleEvents, render, ui } from "./ui/render";
 
-const SAVE_KEY = "bbd.save.v7";
+const SAVE_KEY = "bbd.save.v8";
 
 function load(): State | null {
   try {
     const raw = localStorage.getItem(SAVE_KEY);
     if (!raw) return null;
     const s = JSON.parse(raw) as State;
-    return s && s.v === 7 ? s : null;
+    return s && s.v === 8 ? s : null;
   } catch { return null; }
 }
 function save() {
@@ -58,11 +58,12 @@ on("quit", () => {
 // Everything else is found by its data attribute, because panels are rebuilt as their contents change.
 document.addEventListener("click", (ev) => {
   const el = (ev.target as HTMLElement).closest<HTMLElement>(
-    "[data-answer],[data-retire],[data-health],[data-food],[data-offer],[data-level],[data-down],[data-loan],[data-buy],[data-cancel],[data-move],[data-movelevel],[data-paydown]");
+    "[data-answer],[data-retire],[data-health],[data-gym],[data-food],[data-offer],[data-level],[data-down],[data-loan],[data-buy],[data-cancel],[data-move],[data-movelevel],[data-paydown]");
   if (!el) return;
   const d = el.dataset;
   if (d.answer !== undefined) G.answer(state, d.answer);
   else if (d.health) G.changeHealth(state);
+  else if (d.gym) G.quitGym(state);
   else if (d.retire === "toggle") ui.adjustingRetirement = !ui.adjustingRetirement;
   else if (d.retire) G.adjustRetirement(state, Number(d.retire));
   else if (d.food) G.setFood(state, Number(d.food));

@@ -25,6 +25,7 @@ export interface Estate {
   lifetimePay: number;
   lifetimeTax: number;
   lifetimeInterest: number;
+  cause?: string;
 }
 
 /** A message that stops the clock until the player answers. One choice is a plain confirmation. */
@@ -56,7 +57,7 @@ export interface Mortgage {
 }
 
 export interface State {
-  v: 7;
+  v: 8;
   generation: number; // hook for heirs
   t: number; // years since start
   months: number; // whole months processed
@@ -77,6 +78,20 @@ export interface State {
   loanRate: number; // APY, drifts month to month
   food: number; // notches above the base food budget
   car: { monthly: number } | null; // replaces bus fare once bought
+  gym: { level: number; monthly: number } | null;
+  /** The cofounder offer and what follows from it. */
+  venture: {
+    offerAt: number; // month the offer arrives, if employed
+    offered: boolean;
+    declined: boolean;
+    active: boolean; // currently a founder
+    attempt: number; // which company this is
+    monthsIn: number;
+    dormantFor: number; // months before the stake is worth anything, or the company fails
+    valued: boolean;
+    value: number; // the player's stake. Counts toward net worth. Cannot be sold.
+  };
+  cause: string | null; // cause of death, when the game has decided one
   home: { kind: "none" } | { kind: "apartment"; level: number; rent: number } | { kind: "house" };
   mortgage: Mortgage | null;
   shop: { offers: Offer[]; next: number; bought: string[] };
@@ -87,7 +102,6 @@ export interface State {
     crushLeft: number;
     dates: number;
     togetherLeft: number;
-    gymLeft: number;
     lowStreak: number;
     graceLeft: number; // months before low well-being can cost the job again
     lastBought: Record<string, number>; // month index of last purchase, by item
@@ -135,7 +149,7 @@ const offerFor = (it: BuyItem): Offer => ({ id: it.id, level: it.max ? CFG.buyDe
 
 export function newGame(generation = 1): State {
   return {
-    v: 7,
+    v: 8,
     generation,
     t: 0,
     months: 0,
@@ -147,10 +161,16 @@ export function newGame(generation = 1): State {
     loanRate: CFG.loanRateStart,
     food: 0,
     car: null,
+    gym: null,
+    venture: {
+      offerAt: Math.round(between(CFG.founderOfferMonths)), offered: false, declined: false, active: false,
+      attempt: 0, monthsIn: 0, dormantFor: 0, valued: false, value: 0,
+    },
+    cause: null,
     home: { kind: "none" },
     mortgage: null,
     shop: { offers: CATALOG.slice(0, 3).map(offerFor), next: 3, bought: [] },
-    well: { w: WELL.start, sickLeft: 0, sinceRest: 0, crushLeft: 0, dates: 0, togetherLeft: 0, gymLeft: 0, lowStreak: 0, graceLeft: 0, lastBought: {} },
+    well: { w: WELL.start, sickLeft: 0, sinceRest: 0, crushLeft: 0, dates: 0, togetherLeft: 0, lowStreak: 0, graceLeft: 0, lastBought: {} },
     health: { plan: "unoffered", offered: false, resumePlan: null, extended: false, joblessMonths: 0, uninsuredMonths: 0, noGymMonths: 0 },
     retire: { offered: false, enrolled: false, rate: 0, balance: 0, growth: CFG.growthStart, ytd: 0 },
     popups: [],
@@ -173,7 +193,9 @@ export const monthFraction = (s: State) => clamp(s.t * 12 - s.months, 0, 1);
 export const salaryNow = (s: State) => (s.job.employed ? s.job.salary : 0);
 export const canWork = (s: State) => s.job.employed && s.well.sickLeft <= 0;
 export const homeEquity = (s: State) => (s.mortgage ? s.mortgage.homeValue - s.mortgage.balance : 0);
-export const netWorth = (s: State) => s.cash + homeEquity(s) + s.retire.balance;
+export const netWorth = (s: State) => s.cash + homeEquity(s) + s.retire.balance + s.venture.value;
+/** Taps to fill the regular work bar. Founders need twice as many. */
+export const tapsNeeded = (s: State) => CFG.tapsToFill * (s.venture.active ? CFG.founderWorkMultiplier : 1);
 
 export const foodMonthly = (s: State) => CFG.foodBase + CFG.foodPerNotch * s.food;
 export const transportMonthly = (s: State) => (s.car ? s.car.monthly : CFG.busFare);
@@ -181,7 +203,8 @@ export const rentMonthly = (s: State) => (s.home.kind === "apartment" ? s.home.r
 /** Costs that drain continuously. The mortgage is paid in one piece at month end. */
 export const healthMonthly = (s: State) =>
   (CFG.healthCost[s.health.plan] ?? 0) * (s.health.extended ? CFG.healthJoblessMultiplier : 1);
-export const monthlyExpenses = (s: State) => foodMonthly(s) + transportMonthly(s) + rentMonthly(s) + healthMonthly(s);
+export const gymMonthly = (s: State) => (s.gym ? s.gym.monthly : 0);
+export const monthlyExpenses = (s: State) => foodMonthly(s) + transportMonthly(s) + rentMonthly(s) + healthMonthly(s) + gymMonthly(s);
 const usd = (n: number) => "$" + Math.round(n).toLocaleString("en-US");
 export const housingLabel = (s: State) => (s.home.kind === "apartment" ? "Rent" : s.home.kind === "house" ? "Mortgage" : "");
 
@@ -218,6 +241,7 @@ export function upfrontCost(s: State, o: Offer): number {
   const price = offerPrice(o);
   if (o.id === "house") return houseTerms(s, o).upfront;
   if (o.id === "apartment") return price * CFG.rentDepositMonths;
+  // A gym charges the first month on joining.
   return price;
 }
 /** A house needs its down payment in cash. Everything else can go on debt. */
@@ -270,7 +294,7 @@ export function face(s: State): string {
 
 function bump(s: State, d: number) { s.well.w = clamp(s.well.w + d, 0, 100); }
 
-function wellMonth(s: State, workedFully: boolean, extraNotches: number) {
+function wellMonth(s: State, workedFully: boolean, extraShare: number) {
   const k = s.well;
   const wasSick = k.sickLeft > 0;
   let target = WELL.base + WELL.foodEffect[s.food];
@@ -279,13 +303,13 @@ function wellMonth(s: State, workedFully: boolean, extraNotches: number) {
   const care = WELL.health[s.health.plan];
   target += care.target;
   if (s.health.plan === "none") s.health.uninsuredMonths++;
-  if (k.gymLeft <= 0) s.health.noGymMonths++;
-  let hit = WELL.extraNotchHit * extraNotches;
+  if (s.gym) target += WELL.gymEffect[s.gym.level];
+  else s.health.noGymMonths++;
+  let hit = WELL.extraNotchHit * CFG.tapsToFill * extraShare;
 
   // A full bar of extra work wears you down twice as fast.
-  k.sinceRest = workedFully ? k.sinceRest + (extraNotches >= CFG.tapsToFill ? 2 : 1) : Math.max(0, k.sinceRest - 1);
+  k.sinceRest = workedFully ? k.sinceRest + (extraShare >= 1 ? 2 : 1) : Math.max(0, k.sinceRest - 1);
   if (s.job.employed && k.sinceRest >= WELL.overworkedAfterMonths) target += WELL.overworkedEffect;
-  if (k.gymLeft > 0) k.gymLeft--;
   if (k.graceLeft > 0) k.graceLeft--;
 
   // Someone catches your eye. It may or may not go anywhere.
@@ -315,7 +339,7 @@ function wellMonth(s: State, workedFully: boolean, extraNotches: number) {
       + Math.min(WELL.sickNoGymCap, WELL.sickPerNoGymMonth * s.health.noGymMonths)
       + (k.w < 30 ? WELL.sickChanceLowWell : 0) + (s.food === 0 ? WELL.sickChanceBadFood : 0);
     p *= care.sickFactor;
-    if (k.gymLeft > 0) p /= 2;
+    if (s.gym) p /= 2;
     if (rng() < p) {
       k.sickLeft = care.months + (rng() < care.longChance ? 1 : 0);
       const bill = Math.round(between(care.bill) / 10) * 10;
@@ -338,7 +362,6 @@ function wellPurchase(s: State, it: BuyItem, price: number) {
   k.lastBought[it.id] = s.months;
   if (WELL.restItems.includes(it.id)) { k.sinceRest = 0; boost += WELL.restBonus; }
   if (WELL.dateItems.includes(it.id) && k.crushLeft > 0) k.dates++;
-  if (it.id === "gym") k.gymLeft = WELL.gymMonths;
   bump(s, boost);
 }
 
@@ -354,6 +377,9 @@ function loseJob(s: State, payCut = CFG.rehirePayCut) {
   j.monthsInJob = 0;
   j.joblessLeft = CFG.joblessMonths + (s.well.w < WELL.slowRehireBelow ? WELL.slowRehireExtraMonths : 0);
   s.well.lowStreak = 0;
+  // A founder who walks away or is pushed out leaves the stake behind.
+  const v = s.venture;
+  if (v.active) { v.active = false; v.valued = false; v.value = 0; }
 }
 
 function month(s: State) {
@@ -370,8 +396,9 @@ function month(s: State) {
   // 2. Paycheck, then the monthly work check. A sick month is not held against you.
   const j = s.job;
   const sick = s.well.sickLeft > 0;
-  const workedFully = j.employed && j.taps >= CFG.tapsToFill;
-  const extraNotches = j.employed ? Math.floor(j.extraTaps / CFG.extraTapsPerNotch) : 0;
+  const workedFully = j.employed && j.taps >= tapsNeeded(s);
+  // Share of the extra-work bar filled, counted in whole notches.
+  const extraShare = j.employed ? Math.floor(j.extraTaps / CFG.extraTapsPerNotch) / tapsNeeded(s) : 0;
   if (j.employed) {
     const pay = j.salary / 12;
     // Retirement contributions come out of the paycheck; the employer matches up to a cap.
@@ -387,7 +414,7 @@ function month(s: State) {
     s.events.push({ kind: "pay", amount: pay - contrib });
     if (contrib > 0) s.events.push({ kind: "retire", amount: contrib + match });
     if (!sick) {
-      if (workedFully) { j.missed = 0; j.fullThisYear++; j.extraThisYear += extraNotches / CFG.tapsToFill; }
+      if (workedFully) { j.missed = 0; j.fullThisYear++; j.extraThisYear += extraShare; }
       else { j.missed++; j.missedThisYear++; }
     }
     j.taps = 0;
@@ -401,7 +428,7 @@ function month(s: State) {
         r.offered = true;
         s.popups.push({
           id: "retirement-offer",
-          text: "Your employer has offered to match your contribution to a retirement account. How much of your income would you like to contribute?",
+          text: `Your employer has offered to match your contribution to a retirement account, up to ${Math.round(CFG.retireMatchCap * 100)}% of your income. How much of your income would you like to contribute?`,
           choices: CFG.retireChoices.map((c) => ({ label: `${Math.round(c * 100)}%`, value: String(c) })),
         });
       }
@@ -470,7 +497,7 @@ function month(s: State) {
   }
 
   // 4. Well-being, and what it costs when it stays low.
-  wellMonth(s, workedFully, extraNotches);
+  wellMonth(s, workedFully, extraShare);
   if (j.employed && s.well.lowStreak >= WELL.fireMonths) { loseJob(s); s.events.push({ kind: "fired" }); }
 
   // The loan rate drifts in quarter-point steps, pulled toward its long-run mean.
@@ -493,9 +520,11 @@ function month(s: State) {
     });
   }
 
-  // 6. Year end: bonus, then a raise, both shaped by the year's work.
+  ventureMonth(s);
+
+  // 6. Year end: bonus, then a raise, both shaped by the year's work. Founders get neither.
   if (s.months % 12 === 0) {
-    if (j.employed) {
+    if (j.employed && !s.venture.active) {
       const pct = clamp(
         CFG.bonusBase + CFG.bonusPerFullMonth * j.fullThisYear + CFG.bonusPerMissedMonth * j.missedThisYear
           + CFG.bonusPerExtraMonth * j.extraThisYear + CFG.bonusNoiseSd * gauss(),
@@ -506,7 +535,8 @@ function month(s: State) {
       s.totals.pay += bonus;
       s.popups.push({
         id: "bonus", title: "Year-End Bonus",
-        text: `${Math.round(pct * 100)}% of your salary: ${usd(bonus)}`,
+        text: `${Math.round(pct * 100)}% of your salary: ${usd(bonus)}`
+          + (pct > CFG.bonusPraiseAbove ? `\n\n${CFG.bonusPraise}` : pct < CFG.bonusWarnBelow ? `\n\n${CFG.bonusWarn}` : ""),
         choices: [{ label: "OKAY", value: "ok" }], amount: bonus,
       });
 
@@ -527,6 +557,49 @@ function month(s: State) {
   }
 }
 
+/** The cofounder offer, the worthless years, and what the company becomes. */
+function ventureMonth(s: State) {
+  const v = s.venture, j = s.job;
+  if (!v.offered && j.employed && s.months >= v.offerAt) {
+    v.offered = true;
+    s.popups.push({
+      id: "founder-offer",
+      title: "An Offer",
+      text: `A coworker is leaving to start a company and wants you as a cofounder. The pay is lower and the hours are longer. You would own ${Math.round(CFG.founderStake * 100)}% of a company that does not exist yet.`,
+      choices: [{ label: "QUIT AND JOIN", value: "join" }, { label: "STAY", value: "stay" }],
+    });
+    return;
+  }
+  if (!v.active) return;
+  v.monthsIn++;
+  if (v.valued) {
+    v.value = Math.max(0, v.value * (1 + CFG.stakeGrowth) ** (1 / 12) * (1 + CFG.stakeNoise * gauss()));
+    return;
+  }
+  if (v.monthsIn < v.dormantFor) return;
+  const failChance = CFG.founderFailChance[Math.min(v.attempt, CFG.founderFailChance.length) - 1];
+  if (rng() < failChance) {
+    // The company folds. The staff lose their jobs; the founder leaves with a package and starts the next one.
+    const pkg = Math.round(between(CFG.founderExitPackage) / 1000) * 1000;
+    v.attempt++;
+    v.monthsIn = 0;
+    v.dormantFor = Math.round(between(CFG.founderDormantMonths));
+    s.popups.push({
+      id: "venture-failed", title: "The Company Has Failed",
+      text: `The staff have been laid off. You leave with ${usd(pkg)}.\n\nAn investor from this company has already funded your next one.`,
+      choices: [{ label: "OKAY", value: "ok" }], amount: pkg,
+    });
+  } else {
+    v.valued = true;
+    v.value = Math.round(between(CFG.founderFirstValuation) / 10000) * 10000;
+    s.popups.push({
+      id: "venture-valued", title: "Ownership",
+      text: `An investor has bought into the company. Your ${Math.round(CFG.founderStake * 100)}% is now worth ${usd(v.value)}.\n\nYou cannot sell it.`,
+      choices: [{ label: "OKAY", value: "ok" }],
+    });
+  }
+}
+
 /** Pass an amount through cash over a few seconds, so the player watches it happen. */
 function move(s: State, amount: number) {
   s.moving.push({ left: amount, perYear: Math.abs(amount) / (CFG.taxDrainSeconds / CFG.secondsPerYear) });
@@ -544,6 +617,7 @@ function die(s: State) {
     lifetimePay: s.totals.pay,
     lifetimeTax: s.totals.tax,
     lifetimeInterest: s.totals.interest,
+    cause: s.cause ?? undefined,
   };
   s.dead = true;
 }
@@ -578,15 +652,15 @@ export function advance(s: State, years: number) {
 
 // ---------- Player actions ----------
 
-export const extraUnlocked = (s: State) => s.job.taps >= CFG.tapsToFill;
-export const extraTapsToFill = () => CFG.tapsToFill * CFG.extraTapsPerNotch;
+export const extraUnlocked = (s: State) => s.job.taps >= tapsNeeded(s);
+export const extraTapsToFill = (s: State) => tapsNeeded(s) * CFG.extraTapsPerNotch;
 
 /** One tap of work. Fills the regular bar first, then the extra-work bar. Returns true if it counted. */
 export function work(s: State): boolean {
   if (s.dead || !canWork(s)) return false;
   const j = s.job;
-  if (j.taps < CFG.tapsToFill) { j.taps++; return true; }
-  if (j.extraTaps < extraTapsToFill()) { j.extraTaps++; return true; }
+  if (j.taps < tapsNeeded(s)) { j.taps++; return true; }
+  if (j.extraTaps < extraTapsToFill(s)) { j.extraTaps++; return true; }
   return false;
 }
 
@@ -615,6 +689,22 @@ export function answer(s: State, value: string) {
   if (p.id === "health-continue") {
     if (value === "keep") s.health.extended = true;
     else { s.health.resumePlan = s.health.plan; s.health.plan = "none"; }
+  }
+  if (p.id === "founder-offer") {
+    const v = s.venture, j = s.job;
+    if (value === "join" && j.employed) {
+      v.active = true;
+      v.attempt = 1;
+      v.monthsIn = 0;
+      v.dormantFor = Math.round(between(CFG.founderDormantMonths));
+      j.salary = Math.max(CFG.salaryFloor, Math.round((j.salary * CFG.founderSalaryFactor) / 100) * 100);
+      j.taps = 0; j.extraTaps = 0; j.missed = 0;
+    } else {
+      // The offer does not come again. A desk for life, and a shorter one.
+      v.declined = true;
+      s.deathAge = Math.min(s.deathAge, between(CFG.declinedDeathAge));
+      s.cause = CFG.declinedCauses[Math.floor(rng() * CFG.declinedCauses.length)];
+    }
   }
   if (p.id === "retirement-offer") {
     const rate = Number(value) || 0;
@@ -688,6 +778,7 @@ export function buy(s: State, slot: number) {
   } else {
     s.totals.spent += upfront;
     if (it.id === "apartment") s.home = { kind: "apartment", level: o.level, rent: price };
+    if (it.id === "gym") s.gym = { level: o.level, monthly: price };
     if (it.id === "car") s.car = { monthly: Math.round(CFG.carMonthlyBase + price * CFG.carMonthlyPerDollar) };
   }
   s.events.push({ kind: "buy", name: it.name, amount: upfront });
@@ -705,6 +796,13 @@ export function buy(s: State, slot: number) {
     s.shop.next = (s.shop.next + i + 1) % CATALOG.length;
     return;
   }
+}
+
+/** Cancel the gym. It can be joined again later from Buy. */
+export function quitGym(s: State) {
+  if (s.dead || !s.gym) return;
+  s.gym = null;
+  s.shop.bought = s.shop.bought.filter((id) => id !== "gym");
 }
 
 /** Extra payment toward the mortgage principal. */

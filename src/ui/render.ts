@@ -89,6 +89,9 @@ export function render(s: State) {
   renderPopup(s);
   if (s.dead) return renderEnd(s);
 
+  show("own-box", s.venture.active);
+  text("own", usd(s.venture.value));
+
   // Retirement: appears once the player has enrolled.
   show("retire-box", s.retire.enrolled);
   if (s.retire.enrolled) {
@@ -126,10 +129,13 @@ function renderWork(s: State) {
   disable($("work") as HTMLButtonElement, !able);
   text("work-label", !s.job.employed ? "No job" : able ? "Work" : "Sick");
   $("thermo").classList.toggle("off", !able);
-  $("thermo-fill").style.height = `${(100 * s.job.taps) / CFG.tapsToFill}%`;
+  const need = G.tapsNeeded(s);
+  $("thermo-fill").style.height = `${(100 * s.job.taps) / need}%`;
+  // One notch per tap on the regular bar: a founder's bars show twice as many.
+  for (const id of ["thermo", "thermo-extra"]) $(id).style.setProperty("--step", `${100 / need}%`);
   // The extra-work bar keeps its place in the row and appears once the first bar is full.
   $("thermo-extra").classList.toggle("shown", able && G.extraUnlocked(s));
-  $("thermo-extra-fill").style.height = `${(100 * s.job.extraTaps) / G.extraTapsToFill()}%`;
+  $("thermo-extra-fill").style.height = `${(100 * s.job.extraTaps) / G.extraTapsToFill(s)}%`;
   $("clock-hand").style.transform = `rotate(${(G.monthFraction(s) * 360).toFixed(1)}deg)`;
 
   // Quit grows as the mood sinks.
@@ -150,6 +156,8 @@ function renderExpenses(s: State) {
   const renting = s.home.kind === "apartment";
   text("housing-cost", renting ? perMonth(G.rentMonthly(s)) : s.mortgage ? perMonth(G.nextPayment(s.mortgage).total) : "");
   show("move", renting);
+  show("gym-row", !!s.gym);
+  text("gym-cost", perMonth(G.gymMonthly(s)));
   const insured = s.health.plan === "bad" || s.health.plan === "good";
   show("health-row", s.health.offered);
   text("health-cost", insured ? perMonth(G.healthMonthly(s)) : "none");
@@ -202,6 +210,9 @@ function renderBuy(s: State) {
       meter("", "level", sel.level)
       + confirmRow(`Rent for ${perMonth(G.offerPrice(sel))}`, 'data-buy="1"')
       + `<div class="note">${usd(G.upfrontCost(s, sel))} deposit today.</div>`);
+  } else if (sel.id === "gym") {
+    html("buy-panel", "g" + sel.level, () =>
+      meter("", "level", sel.level) + confirmRow(`Join for ${perMonth(G.offerPrice(sel))}`, 'data-buy="1"'));
   } else {
     html("buy-panel", "i" + sel.id + sel.level, () =>
       (it.max ? meter("", "level", sel.level) : "") + confirmRow(`Buy for ${usd(G.offerPrice(sel))}`, 'data-buy="1"'));
@@ -250,6 +261,8 @@ function renderMortgage(s: State) {
 function renderEnd(s: State) {
   const e = s.estate!;
   text("end-title", `You died at ${e.ageAtDeath}.`);
+  show("end-cause", !!e.cause);
+  text("end-cause", e.cause ? `${e.cause}.` : "");
   const el = $("end-body");
   if (!el.innerHTML) el.innerHTML = `<div class="statement">
     ${line("Net worth", usd(e.net))}

@@ -17,6 +17,7 @@
     <div class="ticker" id="ticker" aria-live="polite"></div>
     <div class="vitals">
       <div>
+        <div class="stat" id="own-box" hidden>Ownership: <span id="own">$0</span></div>
         <div id="retire-box" hidden>
           <div class="stat retire-line">Retirement: <span id="retire">$0</span>
             <button class="mini tiny" id="retire-adjust" type="button" data-retire="toggle">Adjust</button></div>
@@ -72,6 +73,10 @@
       <button class="mini" id="move" type="button" data-move="open">Move</button>
     </div>
     <div class="panel" id="move-panel" hidden></div>
+    <div class="cost-row" id="gym-row" hidden>
+      <span>Gym</span><span id="gym-cost"></span>
+      <button class="mini" type="button" data-gym="quit">Quit</button>
+    </div>
     <div class="cost-row" id="health-row" hidden>
       <span>Health care</span><span id="health-cost"></span>
       <button class="mini" type="button" data-health="change">Change</button>
@@ -111,6 +116,7 @@
 <main id="end" hidden>
   <section>
     <h2 id="end-title"></h2>
+    <div class="stat" id="end-cause" hidden></div>
     <div id="end-body"></div>
     <button class="btn" id="again" type="button">Start a new life</button>
   </section>

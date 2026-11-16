@@ -46,10 +46,10 @@ export const CFG = {
   // If declined (or not employed then), offered again a few months into each new job.
   retireOfferAtMonth: 18,
   retireOfferAfterMonths: 3,
-  retireChoices: [0, 0.05, 0.1],
+  retireChoices: [0, 0.06, 0.1],
   retireMaxRate: 0.1,
   retireStep: 0.01,
-  retireMatchCap: 0.05, // the employer matches contributions up to this share of pay
+  retireMatchCap: 0.06, // the employer matches contributions up to this share of pay
   retireAnnualLimit: 24_500, // 2026 employee limit
   growthStart: 0.05, // annualized, applied monthly
   growthMean: 0.05,
@@ -62,7 +62,30 @@ export const CFG = {
   healthOfferAtMonth: 30,
   healthCost: { none: 0, bad: 100, good: 300 } as Record<string, number>, // per month while employed
   healthJoblessGraceMonths: 6, // coverage continues this long without a job
-  healthJoblessMultiplier: 2, // then it costs this much more, if kept
+  healthJoblessMultiplier: 6, // then it costs this much more, if kept: the full premium
+
+  // Year-end bonus messages.
+  bonusPraiseAbove: 0.2,
+  bonusPraise: "You worked hard. Good job. Keep at it.",
+  bonusWarnBelow: 0.15,
+  bonusWarn: "Your performance is adequate. There are rumors of layoffs coming. Work harder.",
+
+  // The one offer. It comes once, after years of work. Declining it is permanent.
+  founderOfferMonths: [66, 84], // somewhere between 27 years 6 months and 29
+  founderSalaryFactor: 0.6, // founders pay themselves less
+  founderStake: 0.4,
+  founderWorkMultiplier: 2, // both work bars take twice the taps and show twice the notches
+  founderDormantMonths: [18, 30], // the stake is worth nothing for this long
+  founderFailChance: [0.6, 0.35, 0], // by attempt: most first companies fail
+  founderExitPackage: [80_000, 250_000], // what the founder leaves a failed company with
+  founderFirstValuation: [600_000, 2_500_000],
+  stakeGrowth: 0.3, // annualized, placeholder until event cards drive it
+  stakeNoise: 0.06, // monthly
+  declinedDeathAge: [55, 67],
+  declinedCauses: [
+    "Heart disease", "Stroke", "Complications of type 2 diabetes", "Colon cancer", "Pulmonary embolism",
+    "Kidney failure", "Heart failure", "Liver disease", "Complications of high blood pressure", "Pneumonia",
+  ],
 
   quitRelief: 8, // well-being lift from quitting
   quitPayCut: 0.05, // next job pays this much less after quitting (10% after being let go)
@@ -143,7 +166,7 @@ export const CATALOG: BuyItem[] = [
   { id: "furniture", name: "Furniture", min: 300, max: 8000 },
   { id: "vacation", name: "Vacation", min: 900, max: 12000 },
   { id: "car", name: "Car", min: 8000, max: 65000, once: true },
-  { id: "gym", name: "Gym", min: 400, max: 3000 },
+  { id: "gym", name: "Gym", min: 30, max: 250, once: true, perMonth: true }, // offered again after quitting
   { id: "house", name: "House", min: 450_000, max: 3_500_000, once: true, requires: "apartment" },
   { id: "phone", name: "Phone", min: 500, max: 1600 },
   { id: "concert", name: "Concert tickets", min: 120, max: 900 },
@@ -187,7 +210,7 @@ export const WELL = {
   repeatMonths: 6, // buying the same thing again this soon does less
   repeatFactor: 0.4,
   restBonus: 5,
-  gymMonths: 12,
+  gymEffect: [1, 1, 2, 2, 3, 3], // by gym level, while a member
   sickChance: 0.015, // per month at 22
   sickChanceDoublesAfterYears: 25, // age raises it steadily
   sickChanceLowWell: 0.05, // added below 30
