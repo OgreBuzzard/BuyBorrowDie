@@ -46,24 +46,7 @@ const confirmRow = (label: string, attr: string, ok = true) => `
   </div>`;
 const line = (k: string, v: string) => `<div class="exp"><span>${k}</span><span>${v}</span></div>`;
 
-let flashTimer = 0;
 let tickTimer = 0;
-
-/** A big moment: coloured amount beside net worth and a line under Loan Interest. Both hold, then fade. */
-function flash(amount: number, label: string) {
-  const a = $("flash-amount"), l = $("flash-line");
-  a.textContent = (amount > 0 ? "+" : "") + usd(amount);
-  l.textContent = label;
-  for (const el of [a, l]) {
-    el.classList.toggle("pos", amount > 0);
-    el.classList.toggle("neg", amount <= 0);
-    el.classList.remove("pulse");
-    void el.offsetWidth; // restart the pulse animation
-    el.classList.add("on", "pulse");
-  }
-  clearTimeout(flashTimer);
-  flashTimer = window.setTimeout(() => { a.classList.remove("on", "pulse"); l.classList.remove("on", "pulse"); }, CFG.taxFlashSeconds * 1000);
-}
 
 /** Brief line under net worth: interest charged, pay received, things bought. */
 function tick(parts: string[]) {
@@ -89,8 +72,6 @@ export function handleEvents(events: GameEvent[]) {
     else if (e.kind === "fired") neg("Job lost");
     else if (e.kind === "quit") neg("You quit");
     else if (e.kind === "hired") pos("New job");
-    else if (e.kind === "tax") flash(-e.amount, `Taxes due: ${Math.round(e.rate * 100)}%`);
-    else if (e.kind === "bonus") flash(e.amount, `Bonus: ${Math.round(e.rate * 100)}%`);
   }
   if (parts.length) tick(parts);
 }
@@ -130,6 +111,8 @@ function renderPopup(s: State) {
   const p = s.popups[0];
   show("popup", !!p && !s.dead);
   if (!p) return;
+  show("popup-title", !!p.title);
+  text("popup-title", p.title ?? "");
   text("popup-text", p.text);
   const long = p.choices.some((c) => c.label.length > 12) || p.choices.length > 3;
   $("popup-choices").classList.toggle("stack", long);
@@ -141,7 +124,7 @@ function renderWork(s: State) {
   text("salary", usd(G.salaryNow(s)));
   const able = G.canWork(s);
   disable($("work") as HTMLButtonElement, !able);
-  text("work", !s.job.employed ? "No job" : able ? "Work" : "Sick");
+  text("work-label", !s.job.employed ? "No job" : able ? "Work" : "Sick");
   $("thermo").classList.toggle("off", !able);
   $("thermo-fill").style.height = `${(100 * s.job.taps) / CFG.tapsToFill}%`;
   // The extra-work bar keeps its place in the row and appears once the first bar is full.
@@ -167,6 +150,9 @@ function renderExpenses(s: State) {
   const renting = s.home.kind === "apartment";
   text("housing-cost", renting ? perMonth(G.rentMonthly(s)) : s.mortgage ? perMonth(G.nextPayment(s.mortgage).total) : "");
   show("move", renting);
+  const insured = s.health.plan === "bad" || s.health.plan === "good";
+  show("health-row", s.health.offered);
+  text("health-cost", insured ? perMonth(G.healthMonthly(s)) : "none");
   if (!renting) ui.moveLevel = -1;
   show("move-panel", ui.moveLevel >= 0);
   if (ui.moveLevel >= 0) {

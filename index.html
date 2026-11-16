@@ -13,7 +13,6 @@
   <div class="top-in">
     <div class="nwline">
       <span class="nw">Net Worth: <span id="nw">$0</span></span>
-      <span class="flash" id="flash-amount" aria-live="polite"></span>
     </div>
     <div class="ticker" id="ticker" aria-live="polite"></div>
     <div class="vitals">
@@ -31,7 +30,6 @@
         </div>
         <div class="stat" id="age">Age 22 and 0 months</div>
         <div class="stat">Loan Interest: <span id="apr">6%</span></div>
-        <div class="stat flash" id="flash-line"></div>
       </div>
       <div class="face" id="face" role="img" aria-label="How you feel">🙂</div>
     </div>
@@ -44,7 +42,7 @@
     <button class="quit" id="quit" type="button">Quit</button>
     <div class="stat">Salary: <span id="salary">$100,000</span> per year</div>
     <div class="workrow">
-      <button class="work" id="work" type="button">Work</button>
+      <button class="work" id="work" type="button"><span id="work-label">Work</span><small class="key-hint">(space bar)</small></button>
       <div class="thermo" id="thermo" role="img" aria-label="Work done this month">
         <div class="thermo-fill" id="thermo-fill"></div>
         <div class="thermo-ticks"></div>
@@ -74,6 +72,10 @@
       <button class="mini" id="move" type="button" data-move="open">Move</button>
     </div>
     <div class="panel" id="move-panel" hidden></div>
+    <div class="cost-row" id="health-row" hidden>
+      <span>Health care</span><span id="health-cost"></span>
+      <button class="mini" type="button" data-health="change">Change</button>
+    </div>
   </section>
 
   <section>
@@ -116,6 +118,7 @@
 
 <div class="overlay" id="popup" hidden>
   <div class="popup" role="dialog" aria-modal="true" aria-labelledby="popup-text">
+    <h3 id="popup-title" hidden></h3>
     <p id="popup-text"></p>
     <div class="popup-choices" id="popup-choices"></div>
   </div>

@@ -1,4 +1,4 @@
-# Buy, Borrow, Die — prototype 0.6
+# Buy, Borrow, Die — prototype 0.7
 
 Incremental game about wealth and tax. Design doc lives in the Claude project ("Buy, Borrow, Die" → `claude/design-doc.md`).
 
@@ -18,7 +18,7 @@ Incremental game about wealth and tax. Design doc lives in the Claude project ("
 - `src/main.ts` — clock loop, save/load (localStorage), event wiring.
 - `scripts/sim.ts` — headless month-by-month checks.
 
-## Current build: 0.6, the opening
+## Current build: 0.7, the opening
 
 Net worth starts at -$80,000 of student debt. Food, transport and rent drain it continuously. Each month end:
 interest on debt (drifting APY), paycheck, mortgage payment, well-being update. End of month 4: last year's
@@ -32,8 +32,9 @@ Buy shows three offers from `CATALOG`. Apartment adds Rent (and a Move button); 
 mortgage chosen in the buy panel: price, down payment (10-25%), and loan type (30-year fixed, 15-year fixed,
 interest only). Well-being is a hidden 0-100 number shown only as a face; its tuning is in `WELL` in `config.ts`.
 
-Pop-up messages stop the clock until answered (`Popup` in `game.ts`; `answer()` handles each by id). The first
-one offers a retirement account with an employer match, a few months into a job.
+Pop-up messages stop the clock until answered (`Popup` in `game.ts`; `answer()` handles each by id). So far:
+year-end bonus, taxes due, the retirement match (23 years 6 months), and health care (24 years 6 months).
+The space bar is an alternate Work button.
 
 Pause is at the bottom. Other test controls are in the browser console: `bbd.speed = 20`, `bbd.reset()`, `bbd.state()`.
 

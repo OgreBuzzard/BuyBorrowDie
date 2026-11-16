@@ -42,7 +42,9 @@ export const CFG = {
   // Extra work: a second bar that appears once the first is full.
   extraTapsPerNotch: 5,
 
-  // Retirement account, offered by pop-up a few months into a job.
+  // Retirement account, offered by pop-up at 23 years 6 months, after the first bonus and tax bill.
+  // If declined (or not employed then), offered again a few months into each new job.
+  retireOfferAtMonth: 18,
   retireOfferAfterMonths: 3,
   retireChoices: [0, 0.05, 0.1],
   retireMaxRate: 0.1,
@@ -55,6 +57,12 @@ export const CFG = {
   growthMax: 0.15,
   growthPull: 0.15, // monthly pull back toward the mean
   growthShock: 0.02, // monthly random move
+
+  // Health care, offered by pop-up at 24 years 6 months.
+  healthOfferAtMonth: 30,
+  healthCost: { none: 0, bad: 100, good: 300 } as Record<string, number>, // per month while employed
+  healthJoblessGraceMonths: 6, // coverage continues this long without a job
+  healthJoblessMultiplier: 2, // then it costs this much more, if kept
 
   quitRelief: 8, // well-being lift from quitting
   quitPayCut: 0.05, // next job pays this much less after quitting (10% after being let go)
@@ -180,10 +188,20 @@ export const WELL = {
   repeatFactor: 0.4,
   restBonus: 5,
   gymMonths: 12,
-  sickChance: 0.015,
+  sickChance: 0.015, // per month at 22
+  sickChanceDoublesAfterYears: 25, // age raises it steadily
   sickChanceLowWell: 0.05, // added below 30
   sickChanceBadFood: 0.04, // added with the food meter empty
-  doctorBill: [200, 1500],
+  // Neglect adds up for good: every month without health care, and every month without a gym.
+  sickPerUninsuredMonth: 0.0004, sickUninsuredCap: 0.05,
+  sickPerNoGymMonth: 0.00015, sickNoGymCap: 0.03,
+  // By health plan. "unoffered" is the time before the pop-up.
+  health: {
+    unoffered: { target: 0, sickFactor: 1, longChance: 0.3, months: 1, bill: [200, 1500] },
+    none: { target: -8, sickFactor: 1.4, longChance: 0.4, months: 2, bill: [800, 6000] },
+    bad: { target: -1, sickFactor: 1, longChance: 0.3, months: 1, bill: [200, 1500] },
+    good: { target: 2, sickFactor: 0.75, longChance: 0, months: 1, bill: [40, 300] },
+  } as Record<string, { target: number; sickFactor: number; longChance: number; months: number; bill: number[] }>,
   crushChance: 0.05, // per month, when doing well
   crushWellFloor: 55,
   crushMonths: 3,

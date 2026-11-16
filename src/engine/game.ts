@@ -8,12 +8,10 @@ export type GameEvent =
   | { kind: "interest"; amount: number }
   | { kind: "pay"; amount: number }
   | { kind: "retire"; amount: number }
-  | { kind: "tax"; amount: number; rate: number }
   | { kind: "buy"; name: string; amount: number }
   | { kind: "mortgage"; amount: number }
   | { kind: "doctor"; amount: number }
   | { kind: "raise"; salary: number }
-  | { kind: "bonus"; amount: number; rate: number }
   | { kind: "quit" }
   | { kind: "fired" }
   | { kind: "hired"; salary: number };
@@ -30,7 +28,14 @@ export interface Estate {
 }
 
 /** A message that stops the clock until the player answers. One choice is a plain confirmation. */
-export interface Popup { id: string; text: string; choices: { label: string; value: string }[] }
+export interface Popup {
+  id: string;
+  title?: string;
+  text: string;
+  choices: { label: string; value: string }[];
+  amount?: number; // money that moves once the player answers
+}
+export type HealthPlan = "unoffered" | "none" | "bad" | "good";
 
 /** `down` and `loan` are used only by the House offer. */
 export interface Offer { id: string; level: number; down: number; loan: LoanKind }
@@ -51,7 +56,7 @@ export interface Mortgage {
 }
 
 export interface State {
-  v: 6;
+  v: 7;
   generation: number; // hook for heirs
   t: number; // years since start
   months: number; // whole months processed
@@ -88,11 +93,21 @@ export interface State {
     lastBought: Record<string, number>; // month index of last purchase, by item
   };
   retire: {
+    offered: boolean;
     enrolled: boolean; // once true, the Retirement line stays
     rate: number; // share of each paycheck contributed
     balance: number;
     growth: number; // annualized, drifts month to month
     ytd: number; // contributed this year, against the annual limit
+  };
+  health: {
+    plan: HealthPlan;
+    offered: boolean;
+    resumePlan: HealthPlan | null; // plan dropped while out of work, restored by a new job
+    extended: boolean; // kept past the grace period, at the higher price
+    joblessMonths: number; // months in a row without a job
+    uninsuredMonths: number; // lifetime, never resets
+    noGymMonths: number; // lifetime, never resets
   };
   popups: Popup[]; // shown one at a time; the clock waits
   ytdPay: number;
@@ -120,7 +135,7 @@ const offerFor = (it: BuyItem): Offer => ({ id: it.id, level: it.max ? CFG.buyDe
 
 export function newGame(generation = 1): State {
   return {
-    v: 6,
+    v: 7,
     generation,
     t: 0,
     months: 0,
@@ -136,7 +151,8 @@ export function newGame(generation = 1): State {
     mortgage: null,
     shop: { offers: CATALOG.slice(0, 3).map(offerFor), next: 3, bought: [] },
     well: { w: WELL.start, sickLeft: 0, sinceRest: 0, crushLeft: 0, dates: 0, togetherLeft: 0, gymLeft: 0, lowStreak: 0, graceLeft: 0, lastBought: {} },
-    retire: { enrolled: false, rate: 0, balance: 0, growth: CFG.growthStart, ytd: 0 },
+    health: { plan: "unoffered", offered: false, resumePlan: null, extended: false, joblessMonths: 0, uninsuredMonths: 0, noGymMonths: 0 },
+    retire: { offered: false, enrolled: false, rate: 0, balance: 0, growth: CFG.growthStart, ytd: 0 },
     popups: [],
     ytdPay: 0,
     ytdDeferred: 0,
@@ -163,7 +179,10 @@ export const foodMonthly = (s: State) => CFG.foodBase + CFG.foodPerNotch * s.foo
 export const transportMonthly = (s: State) => (s.car ? s.car.monthly : CFG.busFare);
 export const rentMonthly = (s: State) => (s.home.kind === "apartment" ? s.home.rent : 0);
 /** Costs that drain continuously. The mortgage is paid in one piece at month end. */
-export const monthlyExpenses = (s: State) => foodMonthly(s) + transportMonthly(s) + rentMonthly(s);
+export const healthMonthly = (s: State) =>
+  (CFG.healthCost[s.health.plan] ?? 0) * (s.health.extended ? CFG.healthJoblessMultiplier : 1);
+export const monthlyExpenses = (s: State) => foodMonthly(s) + transportMonthly(s) + rentMonthly(s) + healthMonthly(s);
+const usd = (n: number) => "$" + Math.round(n).toLocaleString("en-US");
 export const housingLabel = (s: State) => (s.home.kind === "apartment" ? "Rent" : s.home.kind === "house" ? "Mortgage" : "");
 
 /** Price at a meter level: cheap at 0, nice at the top, evenly spaced by ratio. */
@@ -257,6 +276,10 @@ function wellMonth(s: State, workedFully: boolean, extraNotches: number) {
   let target = WELL.base + WELL.foodEffect[s.food];
   target += s.home.kind === "none" ? WELL.noHome : s.home.kind === "apartment" ? WELL.apartmentEffect[s.home.level] : WELL.houseEffect;
   if (!s.job.employed) target += WELL.joblessEffect;
+  const care = WELL.health[s.health.plan];
+  target += care.target;
+  if (s.health.plan === "none") s.health.uninsuredMonths++;
+  if (k.gymLeft <= 0) s.health.noGymMonths++;
   let hit = WELL.extraNotchHit * extraNotches;
 
   // A full bar of extra work wears you down twice as fast.
@@ -285,11 +308,17 @@ function wellMonth(s: State, workedFully: boolean, extraNotches: number) {
     target += WELL.sickEffect;
     k.sickLeft--;
   } else {
-    let p = WELL.sickChance + (k.w < 30 ? WELL.sickChanceLowWell : 0) + (s.food === 0 ? WELL.sickChanceBadFood : 0);
+    // Age raises the odds. So does every month ever spent without health care or exercise.
+    const years = s.months / 12;
+    let p = WELL.sickChance * (1 + years / WELL.sickChanceDoublesAfterYears)
+      + Math.min(WELL.sickUninsuredCap, WELL.sickPerUninsuredMonth * s.health.uninsuredMonths)
+      + Math.min(WELL.sickNoGymCap, WELL.sickPerNoGymMonth * s.health.noGymMonths)
+      + (k.w < 30 ? WELL.sickChanceLowWell : 0) + (s.food === 0 ? WELL.sickChanceBadFood : 0);
+    p *= care.sickFactor;
     if (k.gymLeft > 0) p /= 2;
     if (rng() < p) {
-      k.sickLeft = rng() < 0.3 ? 2 : 1;
-      const bill = Math.round(between(WELL.doctorBill) / 10) * 10;
+      k.sickLeft = care.months + (rng() < care.longChance ? 1 : 0);
+      const bill = Math.round(between(care.bill) / 10) * 10;
       s.cash -= bill;
       s.totals.spent += bill;
       s.events.push({ kind: "doctor", amount: bill });
@@ -364,21 +393,46 @@ function month(s: State) {
     j.taps = 0;
     j.extraTaps = 0;
     if (j.missed >= CFG.missedMonthsToLoseJob) { loseJob(s); s.events.push({ kind: "fired" }); }
-    // A few months into a job, the employer offers the retirement match.
-    else if (++j.monthsInJob === CFG.retireOfferAfterMonths && !r.enrolled) {
-      s.popups.push({
-        id: "retirement-offer",
-        text: "Your employer has offered to match your contribution to a retirement account. How much of your income would you like to contribute?",
-        choices: CFG.retireChoices.map((c) => ({ label: `${Math.round(c * 100)}%`, value: String(c) })),
-      });
+    else {
+      j.monthsInJob++;
+      const first = !r.offered && s.months >= CFG.retireOfferAtMonth;
+      const again = r.offered && !r.enrolled && j.monthsInJob === CFG.retireOfferAfterMonths;
+      if (first || again) {
+        r.offered = true;
+        s.popups.push({
+          id: "retirement-offer",
+          text: "Your employer has offered to match your contribution to a retirement account. How much of your income would you like to contribute?",
+          choices: CFG.retireChoices.map((c) => ({ label: `${Math.round(c * 100)}%`, value: String(c) })),
+        });
+      }
     }
-
   } else if (--j.joblessLeft <= 0) {
     j.employed = true;
     j.salary = Math.max(CFG.salaryFloor, Math.round(j.salary * (1 - j.nextPayCut)));
     j.monthsInJob = 0;
+    // A new job brings back health care at the usual price.
+    const h = s.health;
+    h.extended = false;
+    if (h.resumePlan) { h.plan = h.resumePlan; h.resumePlan = null; }
     s.well.graceLeft = WELL.fireGraceMonths;
     s.events.push({ kind: "hired", salary: j.salary });
+  }
+
+  // Health care: offered once by pop-up. Without a job it runs on for a while, then costs more or ends.
+  const hc = s.health;
+  hc.joblessMonths = j.employed ? 0 : hc.joblessMonths + 1;
+  if (!hc.offered && s.months >= CFG.healthOfferAtMonth) {
+    hc.offered = true;
+    s.popups.push(healthOffer());
+  }
+  if (hc.joblessMonths === CFG.healthJoblessGraceMonths && !hc.extended && (hc.plan === "bad" || hc.plan === "good")) {
+    const cost = CFG.healthCost[hc.plan] * CFG.healthJoblessMultiplier;
+    s.popups.push({
+      id: "health-continue",
+      title: "Health Care",
+      text: `You have been out of work for six months. Keeping your health care now costs ${usd(cost)} a month.`,
+      choices: [{ label: "KEEP", value: "keep" }, { label: "NONE", value: "none" }],
+    });
   }
 
   // Retirement savings grow every month at the current annualized rate, which then drifts.
@@ -431,9 +485,12 @@ function month(s: State) {
     const t = taxOnWages(s.lastYearPay, s.lastYearDeferred);
     s.lastYearPay = 0;
     s.lastYearDeferred = 0;
-    move(s, -t.total);
     s.totals.tax += t.total;
-    s.events.push({ kind: "tax", amount: t.total, rate: t.rate });
+    s.popups.push({
+      id: "tax", title: "Taxes Due",
+      text: `${Math.round(t.rate * 100)}% of last year's income: ${usd(t.total)}`,
+      choices: [{ label: "OKAY", value: "ok" }], amount: -t.total,
+    });
   }
 
   // 6. Year end: bonus, then a raise, both shaped by the year's work.
@@ -445,12 +502,13 @@ function month(s: State) {
         0, CFG.bonusMax,
       );
       const bonus = Math.round(j.salary * pct);
-      if (bonus > 0) {
-        move(s, bonus);
-        s.ytdPay += bonus;
-        s.totals.pay += bonus;
-      }
-      s.events.push({ kind: "bonus", amount: bonus, rate: pct });
+      s.ytdPay += bonus;
+      s.totals.pay += bonus;
+      s.popups.push({
+        id: "bonus", title: "Year-End Bonus",
+        text: `${Math.round(pct * 100)}% of your salary: ${usd(bonus)}`,
+        choices: [{ label: "OKAY", value: "ok" }], amount: bonus,
+      });
 
       if (j.missedThisYear <= CFG.raiseMaxMissedMonths) {
         const well = Math.max(0, (s.well.w - CFG.raiseWellbeingFloor) / (100 - CFG.raiseWellbeingFloor));
@@ -532,10 +590,32 @@ export function work(s: State): boolean {
   return false;
 }
 
+function healthOffer(): Popup {
+  return {
+    id: "health-offer",
+    title: "Health Care",
+    text: "Sometimes you get sick. If you want to be able to do anything about it, you need this.",
+    choices: [{ label: "NONE", value: "none" }, { label: "BAD", value: "bad" }, { label: "GOOD", value: "good" }],
+  };
+}
+/** Reopen the health care choice from the Expenses row. */
+export function changeHealth(s: State) {
+  if (!s.dead && s.health.offered && s.popups.length === 0) s.popups.push(healthOffer());
+}
+
 /** Answer the pop-up on screen. */
 export function answer(s: State, value: string) {
   const p = s.popups.shift();
   if (!p) return;
+  if (p.amount) move(s, p.amount);
+  if (p.id === "health-offer" && (value === "none" || value === "bad" || value === "good")) {
+    s.health.plan = value;
+    s.health.resumePlan = null;
+  }
+  if (p.id === "health-continue") {
+    if (value === "keep") s.health.extended = true;
+    else { s.health.resumePlan = s.health.plan; s.health.plan = "none"; }
+  }
   if (p.id === "retirement-offer") {
     const rate = Number(value) || 0;
     s.retire.rate = rate;

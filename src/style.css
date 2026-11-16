@@ -66,6 +66,10 @@ h2 { margin: 0; font: 600 17px/1.2 var(--font-display); }
   border: 0; border-radius: 12px; border-bottom: 5px solid var(--go-deep);
   cursor: pointer;
 }
+.work { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; }
+.key-hint { display: none; font: 500 12px/1 var(--font-body); opacity: 0.85; }
+@media (hover: hover) and (pointer: fine) { .key-hint { display: block; } }
+.work:disabled .key-hint { display: none; }
 .work:active:not(:disabled) { transform: translateY(2px); border-bottom-width: 3px; height: 72px; margin-bottom: 2px; }
 .work:disabled { background: var(--idle); color: var(--muted); border-bottom-color: var(--rule); cursor: default; }
 
@@ -80,6 +84,7 @@ h2 { margin: 0; font: 600 17px/1.2 var(--font-display); }
 /* Pop-up messages. The clock waits while one is open. */
 .overlay { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; padding: 20px; background: color-mix(in srgb, var(--ink) 55%, transparent); }
 .popup { width: 100%; max-width: 380px; background: var(--paper); border: 2px solid var(--ink); border-radius: 16px; padding: 20px 18px 18px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3); animation: pop 0.18s ease-out; }
+.popup h3 { margin: 0; font: 600 22px/1.2 var(--font-display); }
 .popup p { margin: 0; font: 500 18px/1.35 var(--font-body); text-wrap: pretty; }
 .popup-choices { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
 .popup-choices.stack { grid-auto-flow: row; }
